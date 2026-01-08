@@ -1,0 +1,195 @@
+id: storage-breach
+name: "Storage Misconfiguration Discovery"
+difficulty: beginner
+
+briefing: |
+  INTEL REPORT: Contoso Corporation has been flagged for a security audit.
+
+  Initial reconnaissance suggests their Azure infrastructure may have
+  misconfigured storage accounts exposing sensitive data.
+
+  Your mission: Identify and extract data from any publicly accessible
+  storage containers. Document your findings for the security report.
+
+  STARTING INTEL:
+  - Target organization: Contoso Corporation
+  - Known storage account: contosostorage2024
+  - Suspected container: backups
+
+  REMINDER: This is an authorized security assessment. Document all findings.
+
+resources:
+  storage_accounts:
+    - name: contosostorage2024
+      resource_group: production-rg
+      location: eastus
+      kind: StorageV2
+      sku: Standard_LRS
+      access_tier: Hot
+      public_access: true
+      https_only: false
+      min_tls_version: TLS1_0
+      creation_time: "2024-01-15T10:30:00.000000+00:00"
+      provisioning_state: Succeeded
+      primary_location: eastus
+      status_of_primary: available
+      tags:
+        environment: production
+        owner: it-ops
+      containers:
+        - name: public-assets
+          public_access: blob
+          blobs:
+            - name: logo.png
+              content: "[Binary data - company logo]"
+              content_type: image/png
+              size: 45678
+            - name: style.css
+              content: "/* Public stylesheet */"
+              content_type: text/css
+              size: 1234
+
+        - name: backups
+          public_access: container
+          blobs:
+            - name: db-backup-2024-01.sql.gz
+              content: "[Compressed database backup - contains customer PII]"
+              content_type: application/gzip
+              size: 524288000
+            - name: config-backup.tar
+              content: |
+                # Application Configuration Backup
+                DB_HOST=prod-sql-server.database.windows.net
+                DB_USER=app_service_account
+                DB_PASS=Pr0d@Passw0rd!2024
+                AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=contosostorage2024;AccountKey=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx==
+                API_KEY=sk-contoso-prod-xxxxxxxxxxxxxxxxxxxxxx
+              content_type: application/x-tar
+              size: 102400
+            - name: secrets.txt
+              content: |
+                === EMERGENCY ACCESS CREDENTIALS ===
+                Last Updated: 2024-01-15
+
+                Azure Portal Admin: admin@contoso.com / AzureAdmin#2024!
+                SQL Server SA: sa / SQLServer@dm1n
+
+                Service Principal (backup-automation):
+                  App ID: 12345678-1234-1234-1234-123456789012
+                  Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+                DO NOT SHARE THIS FILE
+              content_type: text/plain
+              size: 512
+
+        - name: private-data
+          public_access: none
+          blobs:
+            - name: employee-records.xlsx
+              content: "[Protected employee data]"
+              content_type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+              size: 2048000
+
+objectives:
+  - id: discover_account
+    description: "Discover the storage account configuration"
+    trigger: "az storage account"
+    points: 50
+    order: 1
+
+  - id: list_containers
+    description: "List containers in the storage account"
+    trigger: "az storage container list"
+    points: 75
+    order: 2
+
+  - id: find_public_container
+    description: "Identify the publicly accessible backup container"
+    trigger: "regex:az storage blob list.*backups"
+    points: 100
+    order: 3
+
+  - id: extract_secrets
+    description: "Download and examine sensitive backup files"
+    trigger: "regex:(az storage blob download.*(secrets|config)|cat.*(secrets|config))"
+    points: 150
+    order: 4
+    hidden: false
+
+hints:
+  - objective_id: discover_account
+    level: 1
+    text: "Azure CLI has commands to interact with storage accounts. Try exploring 'az storage'."
+    point_cost: 10
+
+  - objective_id: discover_account
+    level: 2
+    text: "Use 'az storage account list' or 'az storage account show --name <account>'"
+    point_cost: 25
+
+  - objective_id: list_containers
+    level: 1
+    text: "Storage accounts contain containers. What command might list them?"
+    point_cost: 15
+
+  - objective_id: list_containers
+    level: 2
+    text: "Try: az storage container list --account-name contosostorage2024"
+    point_cost: 35
+
+  - objective_id: find_public_container
+    level: 1
+    text: "One of the containers has interesting contents related to backups..."
+    point_cost: 20
+
+  - objective_id: find_public_container
+    level: 2
+    text: "az storage blob list --account-name contosostorage2024 --container-name backups"
+    point_cost: 50
+
+  - objective_id: extract_secrets
+    level: 1
+    text: "Look at the blob names - which ones might contain sensitive information?"
+    point_cost: 25
+
+  - objective_id: extract_secrets
+    level: 2
+    text: "Use 'az storage blob download' with --name to download specific files"
+    point_cost: 50
+
+debrief: |
+  === MISSION DEBRIEF ===
+
+  VULNERABILITY IDENTIFIED: Azure Storage Misconfiguration
+
+  FINDINGS:
+  You discovered that Contoso Corporation had critically misconfigured their
+  Azure Blob Storage, exposing sensitive backup files to the public internet.
+
+  IMPACT:
+  - Database credentials exposed
+  - Azure service principal secrets leaked
+  - Admin portal credentials compromised
+  - Customer PII potentially accessible via database backup
+
+  ROOT CAUSE:
+  The 'backups' container was configured with "Container" level public access,
+  allowing anonymous users to list and download all blobs.
+
+  REMEDIATION RECOMMENDATIONS:
+  1. Immediately rotate all exposed credentials
+  2. Set container access level to "Private"
+  3. Use Azure RBAC instead of shared keys where possible
+  4. Enable storage account firewall rules
+  5. Implement Azure Policy to prevent public blob access
+  6. Enable Microsoft Defender for Storage
+  7. Review access logs for potential data exfiltration
+
+  AZURE SECURITY BEST PRACTICES:
+  - Use private endpoints for storage accounts
+  - Disable public blob access at the account level
+  - Implement least-privilege access with managed identities
+  - Enable soft delete and versioning for data protection
+  - Use Azure Key Vault for secrets management
+
+  Great work identifying this critical vulnerability!
