@@ -58,6 +58,7 @@ func (t *Terminal) SetSize(width, height int) {
 		t.viewport = viewport.New(width-2, height-5)
 		t.viewport.Style = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252"))
+		t.viewport.MouseWheelEnabled = true
 		t.ready = true
 	} else {
 		t.viewport.Width = width - 2
@@ -72,6 +73,17 @@ func (t *Terminal) Update(msg tea.Msg) (*Terminal, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		// Handle mouse wheel scrolling
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			t.viewport.LineUp(3)
+			return t, nil
+		case tea.MouseWheelDown:
+			t.viewport.LineDown(3)
+			return t, nil
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -102,6 +114,26 @@ func (t *Terminal) Update(msg tea.Msg) (*Terminal, tea.Cmd) {
 				t.historyIdx = len(t.history)
 				t.input.SetValue("")
 			}
+			return t, nil
+
+		case "pgup", "shift+up":
+			// Scroll viewport up
+			t.viewport.LineUp(5)
+			return t, nil
+
+		case "pgdown", "shift+down":
+			// Scroll viewport down
+			t.viewport.LineDown(5)
+			return t, nil
+
+		case "home", "shift+home":
+			// Scroll to top
+			t.viewport.GotoTop()
+			return t, nil
+
+		case "end", "shift+end":
+			// Scroll to bottom
+			t.viewport.GotoBottom()
 			return t, nil
 
 		case "ctrl+l":
@@ -135,9 +167,15 @@ func (t *Terminal) AddOutput(cmd, output string) {
 		t.output.WriteString("\n")
 	}
 
-	// Update viewport
-	t.viewport.SetContent(t.output.String())
-	t.viewport.GotoBottom()
+	// Update viewport and scroll to bottom
+	content := t.output.String()
+	t.viewport.SetContent(content)
+
+	// Calculate total lines and scroll to bottom
+	lines := strings.Count(content, "\n")
+	if lines > t.viewport.Height {
+		t.viewport.SetYOffset(lines - t.viewport.Height + 1)
+	}
 }
 
 // Clear clears the terminal output
