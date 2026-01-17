@@ -79,7 +79,7 @@ This should be a simple document that outlines features, tasks, TODOs, and block
 # Project Plan
 
 ## Status
-Current project phase and overall progress summary.
+Current project phase and overall progress summary. Follow this format precisely, do not add extra information or fotmatting to the PLAN.md file.
 
 ## Phases
 

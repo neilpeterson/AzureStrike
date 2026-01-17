@@ -12,8 +12,8 @@ import (
 
 // Parser handles command parsing and routing
 type Parser struct {
-	gameState  *game.State
-	azHandler  *az.Handler
+	gameState *game.State
+	azHandler *az.Handler
 }
 
 // Result represents the result of executing a command

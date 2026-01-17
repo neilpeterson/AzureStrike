@@ -171,8 +171,8 @@ func (a *App) View() string {
 
 func (a *App) renderBriefing() string {
 	style := lipgloss.NewStyle().
-		Width(a.width - 4).
-		Height(a.height - 4).
+		Width(a.width-4).
+		Height(a.height-4).
 		Padding(2, 4).
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("63"))
@@ -209,8 +209,8 @@ func (a *App) renderBriefing() string {
 
 func (a *App) renderDebrief() string {
 	style := lipgloss.NewStyle().
-		Width(a.width - 4).
-		Height(a.height - 4).
+		Width(a.width-4).
+		Height(a.height-4).
 		Padding(2, 4).
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("34"))

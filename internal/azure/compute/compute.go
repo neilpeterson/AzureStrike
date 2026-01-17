@@ -26,11 +26,11 @@ type VMIdentity struct {
 
 // NetworkSecurityGroup represents an Azure NSG
 type NetworkSecurityGroup struct {
-	ID            string        `json:"id" yaml:"id"`
-	Name          string        `json:"name" yaml:"name"`
-	ResourceGroup string        `json:"resourceGroup" yaml:"resource_group"`
-	Location      string        `json:"location" yaml:"location"`
-	Rules         []NSGRule     `json:"securityRules" yaml:"rules"`
+	ID            string    `json:"id" yaml:"id"`
+	Name          string    `json:"name" yaml:"name"`
+	ResourceGroup string    `json:"resourceGroup" yaml:"resource_group"`
+	Location      string    `json:"location" yaml:"location"`
+	Rules         []NSGRule `json:"securityRules" yaml:"rules"`
 }
 
 // NSGRule represents an NSG security rule

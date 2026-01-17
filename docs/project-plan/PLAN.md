@@ -1,14 +1,13 @@
-# AzureStrike - Project Status
+# Project Plan
 
-## Current Work
+## Status
 
-None
+Phase 3 complete. Testing framework and CI/CD pipelines are implemented.
 
----
+## Phases
 
-## Phase 1: Foundation (Complete)
+### Phase 1: Foundation (Complete)
 
-### Features
 - [x] Project structure and Go modules
 - [x] Bubble Tea TUI shell with terminal and status panels
 - [x] Command parser framework
@@ -23,31 +22,21 @@ None
 - [x] Secret commands: `fireworks` and `konami`
 - [x] Modular architecture for pluggable scenarios
 - [x] README.md with project overview and scenario roadmap
-
-### Bug Fixes
 - [x] Fix `--help` flag routing (`az storage -h` was showing main help)
 - [x] Fix `clear` command breaking TUI (was sending raw ANSI codes)
 - [x] Fix `exit`/`quit` commands to actually exit the game
-- [x] Fix fireworks - now full-screen celebration overlay (cleaner approach)
+- [x] Fix fireworks - now full-screen celebration overlay
 - [x] Fix fireworks not showing on completion (debrief was rendered first)
-
-### Improvements
-- [x] Reorganize STATUS.md as phase-based document
 - [x] Refactor az ad handlers to use modular entra environment
 - [x] Refactor az vm handlers to use modular compute environment
 - [x] Create internal/azure/entra package for Users, ServicePrincipals, Groups
 - [x] Create internal/azure/compute package for VMs, NSGs
 - [x] Update scenario loader to support all resource types
-- [x] Simplify status panel - show summary + quick commands instead of full objectives
-- [x] Add `o` shortcut for objectives command (displays full objectives in terminal)
+- [x] Simplify status panel - show summary + quick commands
+- [x] Add `o` shortcut for objectives command
 - [x] Terminal scroll support (PgUp/PgDown, Shift+Up/Down, Home/End, Mouse wheel)
-- [x] docs/WALKTHROUGHS.md with step-by-step commands for each scenario
-- [x] Reorganize docs into project-plan/ and solution-docs/ directories
-- [x] Create comprehensive SPECIFICATION.md (game design, architecture, systems)
 
----
-
-## Phase 2: Storage Misconfiguration (Complete)
+### Phase 2: Storage Misconfiguration (Complete)
 
 - [x] Storage account enumeration via az CLI
 - [x] Container listing with public access detection
@@ -57,37 +46,22 @@ None
 - [x] cat command for direct blob content viewing
 - [x] External reconnaissance approach (no pre-auth required)
 
----
+### Phase 3: Testing & CI/CD (Complete)
 
-## Backlog
-
-### Phase 3: Testing & CI/CD
-
-#### Unit Tests
-- [ ] Test framework setup (Go testing + testify)
-- [ ] CLI parser unit tests
-- [ ] Azure handler unit tests (storage, entra, compute)
-- [ ] Game state unit tests (objectives, scoring, achievements)
-- [ ] Scenario loader unit tests
-- [ ] TUI component tests (terminal, status panel)
-- [ ] Code coverage reporting
-
-#### GitHub Actions
-- [ ] CI workflow (build, test, lint on push/PR)
-- [ ] Go linting (golangci-lint)
-- [ ] Code coverage badge
-- [ ] Multi-platform build matrix (linux, darwin, windows)
-- [ ] Automated PR checks
-
-#### Release Management
-- [ ] Semantic versioning setup
-- [ ] Release workflow (tag-triggered)
-- [ ] Cross-platform binary builds (GOOS/GOARCH)
-- [ ] GitHub Releases with artifacts
-- [ ] Changelog generation
-- [ ] Homebrew formula (optional)
-
----
+- [x] Test framework setup (Go testing + testify)
+- [x] CLI parser unit tests
+- [x] Azure handler unit tests (storage, entra, compute)
+- [x] Game state unit tests (objectives, scoring, achievements)
+- [x] Scenario loader unit tests
+- [x] Code coverage reporting
+- [x] CI workflow (build, test, lint on push/PR)
+- [x] Go linting (golangci-lint)
+- [x] Code coverage badge
+- [x] Multi-platform build matrix (linux, darwin, windows)
+- [x] Automated PR checks
+- [x] Release workflow (tag-triggered)
+- [x] Cross-platform binary builds (GOOS/GOARCH)
+- [x] GitHub Releases with artifacts
 
 ### Phase 4: IMDS Token Theft
 
@@ -159,20 +133,3 @@ None
 - [ ] Scenario editor/validator tool
 - [ ] Leaderboard system
 - [ ] Custom scenario loading from URL
-
----
-
-## Scenario Tracker
-
-| ID | Name | Phase | Status | Difficulty |
-|----|------|-------|--------|------------|
-| 01 | Storage Misconfiguration Discovery | 2 | Complete | Beginner |
-| 02 | IMDS Token Theft | 4 | Planned | Beginner |
-| 03 | Service Principal Exposure | 5 | Planned | Beginner |
-| 04 | NSG Misconfiguration | 6 | Planned | Intermediate |
-| 05 | Privilege Escalation via RBAC | 7 | Planned | Intermediate |
-| 06 | Key Vault Secrets Exfiltration | 8 | Planned | Intermediate |
-| 07 | Managed Identity Abuse | 9 | Planned | Intermediate |
-| 08 | Cross-Tenant Access | 10 | Planned | Advanced |
-| 09 | Azure Function Code Injection | 11 | Planned | Advanced |
-| 10 | Full Kill Chain | 12 | Planned | Advanced |

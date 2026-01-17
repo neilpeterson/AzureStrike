@@ -1,8 +1,6 @@
-# AzureStrike - Project Specification
+# Project Specification
 
-This document is the authoritative technical and design reference for AzureStrike.
-
-## 1. Vision & Goals
+## Overview
 
 **AzureStrike** is an educational terminal-based game that simulates Azure security reconnaissance scenarios. It trains security professionals to identify and exploit common Azure misconfigurations in a safe, simulated environment.
 
@@ -20,211 +18,94 @@ This document is the authoritative technical and design reference for AzureStrik
 - Students studying cloud security concepts
 - CTF participants practicing Azure scenarios
 
----
+## Scope
 
-## 2. Game Design
+### Included
 
-### 2.1 Game Flow
+- Terminal-based game with Bubble Tea TUI
+- Mocked Azure CLI commands (az storage, az ad, az vm, az network, etc.)
+- YAML-defined scenarios with objectives, hints, and scoring
+- 10 planned scenarios covering beginner to advanced Azure security topics
+- Achievement system and scoring mechanics
+- Educational debriefs with remediation guidance
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Briefing   │ ──▶ │  Gameplay   │ ──▶ │  Fireworks  │ ──▶ │   Debrief   │
-│  (Modal)    │     │  (CLI+TUI)  │     │  (Overlay)  │     │   (Modal)   │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
-     Enter              Commands            ~4.5 sec            Enter
-```
+### Excluded
 
+- Real Azure API calls (all responses are mocked)
+- Multiplayer or networked gameplay
+- Web-based interface
+- Mobile support
+
+## Requirements
+
+### Functional Requirements
+
+#### Game Flow
 1. **Briefing** - Narrative introduction with mission context
 2. **Gameplay** - Execute commands to complete objectives
 3. **Fireworks** - Celebration animation on completion
 4. **Debrief** - Educational summary with remediation guidance
 
-### 2.2 Objective System
-
-Objectives are goals the player must achieve, tracked by command execution.
-
-**Trigger Matching** (checked after every command):
-
-| Type | Syntax | Example |
-|------|--------|---------|
-| Substring | Plain text | `"blob list"` matches any command containing these words |
-| Regex | `regex:` prefix | `"regex:curl.*contoso.*blob"` for complex patterns |
-| Exact | Full command | `"az storage blob download --name secrets.txt"` |
-
-**Completion Rules:**
-- Each objective completes only once (duplicate commands ignored)
-- Multiple objectives can complete from a single command
+#### Objective System
+- Objectives tracked by command execution
+- Trigger matching: substring, regex (`regex:` prefix), or exact match
+- Each objective completes only once
+- Hidden objectives revealed when completed
 - Help commands (`-h`, `--help`) do not trigger objectives
-- Hidden objectives are revealed when completed
 
-**Ordering:**
-- `order: 0` - Can be completed at any time
-- `order: N` - Suggests sequence (not enforced, for display purposes)
+#### Scoring System
+- Points awarded for objective completion (defined in YAML)
+- Hint penalties subtract from objective points
+- Completion bonus (+100 points when all objectives complete)
+- Points never go below 0
 
-### 2.3 Scoring System
+#### Hint System
+- Progressive hints per objective at increasing point costs
+- Level 1: Vague direction (10-15 pts)
+- Level 2: Moderate guidance (25-35 pts)
+- Level 3: Near-solution (50+ pts)
 
-**Point Mechanics:**
+#### Achievement System
+- Predefined achievements: First Blood, Speed Demon, Solo Operator, Perfect Score, etc.
+- Triggered by game logic or CLI handlers
+- Displayed in score command output
 
-| Source | Calculation |
-|--------|-------------|
-| Objective completion | Base points from YAML |
-| Hint penalty | Subtract cumulative cost of hints used |
-| Completion bonus | +100 points when all objectives complete |
+#### Command System
+- `az` - Mocked Azure CLI (storage, ad, vm, account, network, keyvault, functionapp)
+- `curl` - IMDS endpoint and blob storage URLs
+- `scan` - Storage account enumeration with wordlists
+- `cat` - Direct blob content viewing
+- `help`, `objective`, `score`, `hint`, `clear` - Game commands
 
-**Invariants:**
-- Points never go below 0 (clamped)
-- Points never exceed maximum possible
-- Point history logged with timestamp and reason
+### Non-Functional Requirements
 
-**Example:**
-```
-Objective "download_secrets": 150 points
-Hint Level 1 used: -10 points
-Hint Level 2 used: -25 points
-Final award: 150 - 10 - 25 = 115 points
-```
+#### Terminal Requirements
+- Minimum terminal size: 80x24 (recommended: 120x40)
+- Alt-screen mode (full terminal takeover)
+- 256-color support for styling
+- Mouse support for scrolling (optional)
 
-### 2.4 Hint System
+#### Platform Support
+- Primary: macOS, Linux
+- Secondary: Windows (via Windows Terminal)
+- Go 1.21+ required
 
-Progressive hints available per objective at increasing point costs.
+#### Performance
+- Responsive command execution (< 100ms)
+- Smooth fireworks animation (30fps)
+- No network latency (all mocked locally)
 
-| Level | Purpose | Typical Cost |
-|-------|---------|--------------|
-| 1 | Vague direction | 10-15 pts |
-| 2 | Moderate guidance | 25-35 pts |
-| 3 | Near-solution | 50+ pts |
+### Constraints and Assumptions
 
-**Mechanics:**
-- `hint <objective_id>` shows next unused hint level
-- Hint costs accumulate (level 1 + level 2 = both costs deducted)
-- Hints tracked per objective (using level 2 doesn't require level 1)
+- Single game session per app instance
+- No save/load (planned for future phase)
+- State exists only in memory
+- Exit terminates all progress
+- All Azure responses are pre-defined mocks
 
-### 2.5 Achievement System
+## Architecture
 
-Achievements are optional milestones beyond core objectives.
-
-**Predefined Achievements:**
-
-| ID | Name | Trigger |
-|----|------|---------|
-| `first_blood` | First Blood | Complete first objective |
-| `speed_demon` | Speed Demon | Finish scenario in < 5 minutes |
-| `no_hints` | Solo Operator | Complete without using hints |
-| `perfect_score` | Perfect Score | Achieve maximum points |
-| `blob_hunter` | Blob Hunter | Download sensitive storage data |
-| `token_thief` | Token Thief | Extract IMDS credentials |
-| `lateral_mover` | Lateral Mover | Move between resources using credentials |
-
-**Unlock Mechanics:**
-- Triggered explicitly by game logic or CLI handlers
-- Not automatic from objectives (enables complex conditions)
-- Unlock attempts on already-unlocked achievements ignored
-
----
-
-## 3. User Interface Design
-
-### 3.1 Layout Architecture
-
-```
-┌──────────────────────────────────────────┬────────────────────────────────┐
-│                                          │        === STATUS ===          │
-│              TERMINAL                    │                                │
-│                                          │  MISSION                       │
-│  $ az storage account list               │    Storage Breach              │
-│  [                                       │    Time: 05:23                 │
-│    {                                     │                                │
-│      "name": "contoso2024",              │  SCORE                         │
-│      ...                                 │    125 / 375                   │
-│    }                                     │    ████████░░░░░░░░░░░ 33%     │
-│  ]                                       │                                │
-│                                          │  OBJECTIVES                    │
-│  [+] OBJECTIVE COMPLETE: Discover...     │    2 / 4 complete              │
-│                                          │                                │
-│  $ _                                     │  COMMANDS                      │
-│                                          │    objective  score            │
-│                                          │    hint       help             │
-└──────────────────────────────────────────┴────────────────────────────────┘
-```
-
-**Panel Dimensions:**
-- Terminal: `width - 37` (remaining space after status panel)
-- Status: 32 characters fixed width
-- Gap/borders: 5 characters
-
-### 3.2 Terminal Panel
-
-**Features:**
-- Command input with `$ ` prompt
-- Scrollable output viewport (command history + results)
-- Command history navigation (up/down arrows)
-
-**Keyboard Controls:**
-
-| Key | Action |
-|-----|--------|
-| Enter | Execute command |
-| Up/Down | Navigate command history |
-| PgUp/PgDown | Scroll output |
-| Shift+Up/Down | Scroll output (alternative) |
-| Home/End | Jump to top/bottom of output |
-| Mouse wheel | Scroll output |
-| Ctrl+L | Clear terminal |
-| Ctrl+C | Quit game |
-
-### 3.3 Status Panel
-
-**Sections (top to bottom):**
-
-1. **Header** - "=== STATUS ===" title
-2. **Mission** - Scenario name + elapsed time
-3. **Score** - Points with visual progress bar
-4. **Objectives** - Completion count + hints used
-5. **Commands** - Quick reference (objective, hint, score, help)
-
-**Progress Bar:**
-```
-████████████░░░░░░░░░░░░ 52%
- (filled)    (empty)
-```
-
-### 3.4 Modal Screens
-
-**Briefing (shown first):**
-- Magenta double border
-- Scenario name and difficulty
-- Full narrative text
-- Dismiss: Enter or Space
-
-**Debrief (shown after completion):**
-- Green double border
-- "MISSION COMPLETE" header
-- Final score in yellow
-- Educational content
-- Dismiss: Enter or Space
-
-### 3.5 Fireworks Animation
-
-Triggered on scenario completion before debrief.
-
-**Parameters:**
-- Duration: ~4.5 seconds (135 frames @ 30fps)
-- Initial burst: 8 explosions
-- Continuous spawning: 1-2 explosions every 8 frames
-- Particles per explosion: 25-44
-- Particle life: 20-44 frames
-
-**Physics:**
-- Gravity: +0.06 velocity per frame
-- Horizontal spread: 3x base velocity
-- Vertical spread: 1.8x base velocity
-- Fade effect: dim when life < 8 frames
-
----
-
-## 4. Architecture
-
-### 4.1 Component Diagram
+### Component Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -240,21 +121,21 @@ Triggered on scenario completion before debrief.
         │
         ▼
 ┌───────────────┐
-│    Parser     │ ─────────────────────────────────────────────────────┐
-│  (CLI Router) │                                                      │
-└───────────────┘                                                      │
-        │                                                              │
-        ├──────────────┬──────────────┬──────────────┐                 │
-        ▼              ▼              ▼              ▼                 │
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  az Handler │  │curl Handler │  │scan Handler │  │ cat Handler │     │
-└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘     │
-        │              │              │              │                 │
-        └──────────────┴──────────────┴──────────────┘                 │
-                              │                                        │
-                              ▼                                        │
-                    ┌───────────────┐                                  │
-                    │  Game State   │ ◀────────────────────────────────┘
+│    Parser     │
+│  (CLI Router) │
+└───────────────┘
+        │
+        ├──────────────┬──────────────┬──────────────┐
+        ▼              ▼              ▼              ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  az Handler │  │curl Handler │  │scan Handler │  │ cat Handler │
+└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
+        │              │              │              │
+        └──────────────┴──────────────┴──────────────┘
+                              │
+                              ▼
+                    ┌───────────────┐
+                    │  Game State   │
                     └───────────────┘
                               │
         ┌─────────────────────┼─────────────────────┐
@@ -265,199 +146,48 @@ Triggered on scenario completion before debrief.
 └───────────────┘   └───────────────┘   └───────────────┘
 ```
 
-### 4.2 Data Flow
+### Directory Structure
 
 ```
-User Input
-    │
-    ▼
-Terminal.Update() ─────▶ CommandMsg
-                              │
-                              ▼
-                    App.Update() ─────▶ Parser.Execute()
-                                              │
-                                              ▼
-                                      Command Handler
-                                              │
-                                              ▼
-                                      GameState.RecordCommand()
-                                              │
-                                              ▼
-                                      Check Objectives ─────▶ Complete if matched
-                                              │
-                                              ▼
-                                      Return Result (output + notifications)
-                                              │
-                                              ▼
-                                      Terminal.AddOutput()
-                                              │
-                                              ▼
-                                      Status.Update()
+cmd/azurestrike/       Entry point
+internal/
+  game/                Game engine (state, objectives, scoring)
+  azure/               Mocked Azure environment
+    entra/             Users, groups, roles, tokens
+    storage/           Storage accounts, blobs, SAS tokens
+    compute/           VMs, networking, NSGs
+    arm/               Mock ARM API responses
+  cli/                 Fake CLI implementations (az, kubectl, curl)
+  tui/                 Terminal UI (Bubble Tea components)
+  scenario/            YAML scenario loader
+scenarios/             YAML scenario definitions
 ```
 
-### 4.3 Game State
+### Data Flow
 
-**Core Structure:**
-```go
-type State struct {
-    Scenario           *Scenario           // Loaded scenario definition
-    StartTime          time.Time           // Session start
-    CompletedObjectives map[string]time.Time // ID → completion time
-    CommandHistory     []CommandRecord     // Full command log
-    HintsUsed          map[string]int      // Objective ID → highest level used
-    Score              Score               // Points + history + achievements
-    Status             GameStatus          // Playing, Completed, Failed
-
-    // Mocked environments (immutable during gameplay)
-    StorageEnv         *storage.Environment
-    EntraEnv           *entra.Environment
-    ComputeEnv         *compute.Environment
-}
+```
+User Input → Terminal.Update() → CommandMsg → App.Update() → Parser.Execute()
+    → Command Handler → GameState.RecordCommand() → Check Objectives
+    → Return Result → Terminal.AddOutput() → Status.Update()
 ```
 
-**Invariants:**
-- Environments are immutable during gameplay
-- Command history only appends (no undo)
-- Objectives complete once (checked via map)
-- State changes only through defined methods
-
-### 4.4 Bubble Tea Pattern
+### Bubble Tea Pattern
 
 All TUI components implement the Model interface:
+- `Init()` - Initialize subscriptions
+- `Update(tea.Msg)` - Handle messages
+- `View()` - Render to string
 
-```go
-type Model interface {
-    Init() tea.Cmd           // Initialize subscriptions
-    Update(tea.Msg) (Model, tea.Cmd)  // Handle messages
-    View() string            // Render to string
-}
-```
+Message types: `tea.KeyMsg`, `tea.WindowSizeMsg`, `CommandMsg`, `FireworksTickMsg`
 
-**Message Types:**
-- `tea.KeyMsg` - Keyboard input
-- `tea.WindowSizeMsg` - Terminal resize
-- `CommandMsg` - Command execution request
-- `FireworksTickMsg` - Animation frame
+## Schema
 
----
-
-## 5. Command System
-
-### 5.1 Command Routing
-
-```
-Input: "az storage blob list --account-name contoso"
-       │
-       ▼
-┌──────────────────────────────────────────────────┐
-│                     Parser                       │
-│  Split: ["az", "storage", "blob", "list", ...]   │
-└──────────────────────────────────────────────────┘
-       │
-       ▼ (switch on args[0])
-       │
-       ├── "az"        → azHandler.Execute()
-       ├── "curl"      → handleCurl()
-       ├── "scan"      → handleScan()
-       ├── "cat"       → handleCat()
-       ├── "help"      → handleHelp()
-       ├── "objective" → handleObjectives()
-       ├── "score"     → handleScore()
-       ├── "hint"      → handleHint()
-       ├── "clear"     → handleClear()
-       └── default     → "Unknown command"
-```
-
-### 5.2 Azure CLI Handler Hierarchy
-
-```
-az
-├── storage
-│   ├── account
-│   │   ├── list     → List all storage accounts
-│   │   └── show     → Show specific account (--name required)
-│   ├── container
-│   │   └── list     → List containers (--account-name required)
-│   └── blob
-│       ├── list     → List blobs (--account-name, --container-name required)
-│       └── download → Download blob (--name required)
-├── ad
-│   ├── user
-│   │   ├── list     → List Entra ID users
-│   │   └── show     → Show user (--id or --upn-or-object-id required)
-│   └── sp
-│       ├── list     → List service principals
-│       └── show     → Show SP (--id required)
-├── vm
-│   ├── list         → List VMs (-g for resource group filter)
-│   └── show         → Show VM (--name required)
-├── account
-│   ├── list         → List subscriptions
-│   └── show         → Show current subscription
-└── login            → (Informational only in game context)
-```
-
-### 5.3 Output Formats
-
-Controlled via `--output` / `-o` flag:
-
-| Format | Description | Example |
-|--------|-------------|---------|
-| `json` | Pretty-printed JSON (default) | `[{"name": "value", ...}]` |
-| `table` | ASCII table with headers | `Name    Location\n------  --------\ncontoso eastus` |
-| `tsv` | Tab-separated values | `contoso\teastus` |
-| `none` | No output | (empty) |
-
-### 5.4 Error Messages
-
-Errors match real Azure CLI format:
-
-```
-az storage blob list: --account-name is required
-```
-
-```
-This request is not authorized to perform this operation.
-RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-Time:2024-01-15T10:30:00.0000000Z
-```
-
-### 5.5 Special Commands
-
-**curl (IMDS):**
-```bash
-curl -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
-```
-
-**curl (Blob Storage):**
-```bash
-curl https://contoso.blob.core.windows.net/backups?comp=list    # List blobs
-curl https://contoso.blob.core.windows.net/backups/secrets.txt  # Download blob
-```
-
-**scan (Storage Enumeration):**
-```bash
-scan storage --company contoso              # Company-based wordlist
-scan storage --wordlist common              # Common names wordlist
-scan storage --accounts name1,name2,name3   # Specific accounts
-```
-
-**cat (Blob Content):**
-```bash
-cat backups/secrets.txt                     # Short form (auto-discover account)
-cat contoso2024/backups/secrets.txt         # Full form (explicit account)
-```
-
----
-
-## 6. Scenario System
-
-### 6.1 YAML Structure
+### Scenario YAML Structure
 
 ```yaml
-id: storage-breach
-name: "Storage Misconfiguration Discovery"
-difficulty: beginner
+id: scenario-id
+name: "Display Name"
+difficulty: beginner|intermediate|advanced
 briefing: |
   Multi-line narrative introduction...
 
@@ -516,7 +246,7 @@ hints:
     point_cost: 25
 ```
 
-### 6.2 Resource Types
+### Resource Types
 
 | Resource | YAML Key | Mock Handler |
 |----------|----------|--------------|
@@ -527,125 +257,105 @@ hints:
 | Virtual Machines | `virtual_machines` | `az vm` |
 | Network Security Groups | `network_security_groups` | `az network nsg` |
 
-### 6.3 Access Control Simulation
+### Game State Structure
 
-**Container Public Access Levels:**
+```go
+type State struct {
+    Scenario            *Scenario
+    StartTime           time.Time
+    CompletedObjectives map[string]time.Time
+    CommandHistory      []CommandRecord
+    HintsUsed           map[string]int
+    Score               Score
+    Status              GameStatus
+    StorageEnv          *storage.Environment
+    EntraEnv            *entra.Environment
+    ComputeEnv          *compute.Environment
+}
+```
 
-| Level | `blob list` | `blob download` |
-|-------|-------------|-----------------|
-| `container` | Allowed | Allowed |
-| `blob` | Denied (403) | Allowed (if URL known) |
-| `none` | Denied (403) | Denied (403) |
+## Implementation Details
 
-### 6.4 Scenario Loading
+### UI Layout
 
-**Search Order:**
-1. `scenarios/<id>/scenario.yaml`
-2. `scenarios/*-<id>/scenario.yaml` (prefix wildcard)
-3. `scenarios/<id>.yaml` (flat file)
-4. Scan all directories, match by `id` field
+```
+┌──────────────────────────────────────────┬────────────────────────────────┐
+│                                          │        === STATUS ===          │
+│              TERMINAL                    │                                │
+│                                          │  MISSION                       │
+│  $ az storage account list               │    Storage Breach              │
+│  [                                       │    Time: 05:23                 │
+│    {                                     │                                │
+│      "name": "contoso2024",              │  SCORE                         │
+│      ...                                 │    125 / 375                   │
+│    }                                     │    ████████░░░░░░░░░░░ 33%     │
+│  ]                                       │                                │
+│                                          │  OBJECTIVES                    │
+│  [+] OBJECTIVE COMPLETE: Discover...     │    2 / 4 complete              │
+│                                          │                                │
+│  $ _                                     │  COMMANDS                      │
+│                                          │    objective  score            │
+│                                          │    hint       help             │
+└──────────────────────────────────────────┴────────────────────────────────┘
+```
 
-**Validation:**
-- Required: id, name, at least 1 objective
-- Objectives require: id, description, trigger, points
-- Duplicate objective IDs are rejected
+Panel dimensions: Terminal (width - 37), Status (32 chars fixed), Gap/borders (5 chars)
 
----
+### Keyboard Controls
 
-## 7. Extension Points
+| Key | Action |
+|-----|--------|
+| Enter | Execute command |
+| Up/Down | Navigate command history |
+| PgUp/PgDown | Scroll output |
+| Shift+Up/Down | Scroll output (alternative) |
+| Home/End | Jump to top/bottom of output |
+| Mouse wheel | Scroll output |
+| Ctrl+L | Clear terminal |
+| Ctrl+C | Quit game |
 
-### 7.1 Adding New Commands
+### Output Formats
 
-1. Add case in `Parser.Execute()` switch
-2. Implement handler returning `Result{Output, Success}`
-3. Parser auto-records and checks objectives
+Controlled via `--output` / `-o` flag:
+- `json` - Pretty-printed JSON (default)
+- `table` - ASCII table with headers
+- `tsv` - Tab-separated values
+- `none` - No output
 
-### 7.2 Adding New Azure Resources
+### Fireworks Animation
 
-1. Define struct in `internal/azure/<service>/`
-2. Add YAML fields to scenario schema
-3. Create Environment with lookup methods
-4. Add CLI handlers in `internal/cli/az/`
-5. Wire environment to game state
+- Duration: ~4.5 seconds (135 frames @ 30fps)
+- Initial burst: 8 explosions
+- Particles per explosion: 25-44
+- Physics: Gravity +0.06 velocity/frame, fade when life < 8 frames
 
-### 7.3 Adding New Scenarios
+### Color Scheme
 
-1. Create `scenarios/<id>/scenario.yaml`
-2. Define resources, objectives, hints
-3. Test with `--scenario <id>`
-4. Document in `docs/solution-docs/scenarios/`
-
-### 7.4 Adding New Achievements
-
-1. Add achievement ID to predefined list in game engine
-2. Add unlock logic in appropriate handler
-3. Achievement displays in `score` command output
-
----
-
-## 8. Technical Constraints
-
-### 8.1 Session Model
-
-- Single game session per app instance
-- No save/load (planned for Phase 2)
-- State exists only in memory
-- Exit terminates all progress
-
-### 8.2 Terminal Requirements
-
-- Minimum terminal size: 80x24 (recommended: 120x40)
-- Alt-screen mode (full terminal takeover)
-- 256-color support for styling
-- Mouse support for scrolling (optional)
-
-### 8.3 Platform Support
-
-- Primary: macOS, Linux
-- Secondary: Windows (via Windows Terminal)
-- Go 1.21+ required
-
----
-
-## Appendix A: Color Scheme
-
-| Element | Color Code | Usage |
-|---------|------------|-------|
+| Element | Color | Usage |
+|---------|-------|-------|
 | Title | Magenta (205) | Panel headers |
 | Section headers | Cyan (75) | "MISSION", "SCORE", etc. |
 | Labels | Gray (241) | Dim descriptive text |
 | Values | White (252) | Data values |
 | Progress filled | Green (34) | Progress bar fill |
-| Progress empty | Dark gray (236) | Progress bar background |
 | Borders | Cyan (63) | Panel borders |
 | Errors | Red | Error messages |
 | Success | Green (34) | Completion notifications |
 
----
+## Dependencies
 
-## Appendix B: Message Format Reference
+### Go Modules
 
-**Objective Completion:**
-```
-[+] OBJECTIVE COMPLETE: <description> (+<points>)
-```
+- `github.com/charmbracelet/bubbletea` - TUI framework
+- `github.com/charmbracelet/lipgloss` - Styling
+- `gopkg.in/yaml.v3` - YAML parsing
 
-**Hint Display:**
-```
-HINT (Level <N>, -<cost> pts):
-<hint text>
-```
+### Build Requirements
 
-**Score Display:**
-```
-=== SCORE ===
+- Go 1.21+
+- Standard Go modules (`go mod tidy`)
 
-Total Points: <current>
-Max Possible: <max>
+### Development Tools
 
-Bonuses:
-  [+] <bonus description>: +<points>
-
-Achievements:
-  [*] <achievement name>
-```
+- `golangci-lint` - Linting
+- `testify` - Test assertions
