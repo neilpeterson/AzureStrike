@@ -1,5 +1,9 @@
 # AzureStrike
 
+[![CI](https://github.com/azurestrike/azurestrike/actions/workflows/ci.yml/badge.svg)](https://github.com/azurestrike/azurestrike/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/azurestrike/azurestrike/branch/main/graph/badge.svg)](https://codecov.io/gh/azurestrike/azurestrike)
+[![Go Report Card](https://goreportcard.com/badge/github.com/azurestrike/azurestrike)](https://goreportcard.com/report/github.com/azurestrike/azurestrike)
+
 A terminal-based game that simulates Azure security scenarios for training security professionals. Features narrative-driven missions with a hybrid interface (CLI commands + TUI status panels) and a scoring/achievement system.
 
 ## Overview
