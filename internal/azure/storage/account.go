@@ -43,12 +43,12 @@ type Blob struct {
 
 // SASToken represents a Shared Access Signature token
 type SASToken struct {
-	Token       string            `yaml:"token" json:"-"`
-	Permissions string            `yaml:"permissions" json:"-"` // r, w, d, l, a, c
-	Expiry      time.Time         `yaml:"expiry" json:"-"`
-	StartTime   time.Time         `yaml:"start_time" json:"-"`
-	Services    string            `yaml:"services" json:"-"`    // b, f, q, t
-	ResourceTypes string          `yaml:"resource_types" json:"-"` // s, c, o
+	Token         string    `yaml:"token" json:"-"`
+	Permissions   string    `yaml:"permissions" json:"-"` // r, w, d, l, a, c
+	Expiry        time.Time `yaml:"expiry" json:"-"`
+	StartTime     time.Time `yaml:"start_time" json:"-"`
+	Services      string    `yaml:"services" json:"-"`       // b, f, q, t
+	ResourceTypes string    `yaml:"resource_types" json:"-"` // s, c, o
 }
 
 // Environment represents the mocked Azure storage environment

@@ -198,9 +198,15 @@ func TestAccountFields(t *testing.T) {
 	assert.Equal(t, "my-rg", account.ResourceGroup)
 	assert.Equal(t, "eastus2", account.Location)
 	assert.Equal(t, "StorageV2", account.Kind)
+	assert.Equal(t, "Standard_LRS", account.SKU)
+	assert.Equal(t, "Hot", account.AccessTier)
 	assert.True(t, account.AllowBlobPublicAccess)
 	assert.True(t, account.EnableHTTPSOnly)
 	assert.Equal(t, "TLS1_2", account.MinTLSVersion)
+	assert.Equal(t, "2024-01-01T00:00:00Z", account.CreationTime)
+	assert.Equal(t, "Succeeded", account.ProvisioningState)
+	assert.Equal(t, "eastus2", account.PrimaryLocation)
+	assert.Equal(t, "available", account.StatusOfPrimary)
 	assert.Equal(t, "test", account.Tags["env"])
 }
 

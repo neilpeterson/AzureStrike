@@ -373,7 +373,7 @@ func (h *Handler) handleStorageBlob(args []string) Result {
 		blob := h.storageEnv.GetBlob(accountName, containerName, blobName)
 		if blob == nil {
 			return Result{
-				Output:  fmt.Sprintf("BlobNotFound: The specified blob does not exist.\nRequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\nTime:2024-01-01T00:00:00.0000000Z\nErrorCode: BlobNotFound"),
+				Output:  "BlobNotFound: The specified blob does not exist.\nRequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\nTime:2024-01-01T00:00:00.0000000Z\nErrorCode: BlobNotFound",
 				Success: false,
 			}
 		}

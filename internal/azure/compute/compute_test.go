@@ -260,6 +260,7 @@ func TestNetworkSecurityGroupFields(t *testing.T) {
 	assert.Equal(t, "Inbound", rule.Direction)
 	assert.Equal(t, "Allow", rule.Access)
 	assert.Equal(t, "Tcp", rule.Protocol)
+	assert.Equal(t, "*", rule.SourcePortRange)
 	assert.Equal(t, "443", rule.DestinationPortRange)
 }
 
@@ -293,6 +294,8 @@ func TestNSGRuleFields(t *testing.T) {
 	assert.Equal(t, "Outbound", rule.Direction)
 	assert.Equal(t, "Deny", rule.Access)
 	assert.Equal(t, "*", rule.Protocol)
+	assert.Equal(t, "*", rule.SourcePortRange)
+	assert.Equal(t, "*", rule.DestinationPortRange)
 	assert.Equal(t, "10.0.0.0/8", rule.SourceAddressPrefix)
 	assert.Equal(t, "Internet", rule.DestinationAddressPrefix)
 }

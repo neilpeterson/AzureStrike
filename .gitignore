@@ -1,5 +1,5 @@
-# Binary
-azurestrike
+# Binary (only at root level)
+/azurestrike
 
 # IDE
 .idea/
