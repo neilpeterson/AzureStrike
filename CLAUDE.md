@@ -90,7 +90,7 @@ The game intercepts and mocks these command patterns:
 
 ## SPEC.md Reference
 
-The `docs/project-management/SPEC.md` file is the authoritative technical and design specification for AzureStrike. Consult it for:
+The `docs/project-plan/SPEC.md` file is the authoritative technical and design specification for AzureStrike. Consult it for:
 - Game design (objectives, scoring, hints, achievements)
 - UI layout and component architecture
 - Command system and routing
@@ -99,7 +99,7 @@ The `docs/project-management/SPEC.md` file is the authoritative technical and de
 
 ## PLAN.md Guidelines
 
-The `docs/project-management/PLAN.md` file tracks project progress like a product/sprint document. **Update it after every change.**
+The `docs/project-plan/PLAN.md` file tracks project progress like a product/sprint document. **Update it after every change.**
 
 ### Required Updates
 - After completing ANY task, add it to the Current Phase's completed items

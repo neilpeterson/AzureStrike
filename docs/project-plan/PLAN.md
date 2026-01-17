@@ -42,7 +42,7 @@ None
 - [x] Add `o` shortcut for objectives command (displays full objectives in terminal)
 - [x] Terminal scroll support (PgUp/PgDown, Shift+Up/Down, Home/End, Mouse wheel)
 - [x] docs/WALKTHROUGHS.md with step-by-step commands for each scenario
-- [x] Reorganize docs into project-management/ and solution-docs/ directories
+- [x] Reorganize docs into project-plan/ and solution-docs/ directories
 - [x] Create comprehensive SPECIFICATION.md (game design, architecture, systems)
 
 ---
