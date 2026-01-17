@@ -88,9 +88,18 @@ The game intercepts and mocks these command patterns:
 - `az network nsg rule list`
 - `curl http://169.254.169.254/metadata/...` (IMDS)
 
-## STATUS.md Guidelines
+## SPEC.md Reference
 
-The `.claude/STATUS.md` file tracks project progress like a product/sprint document. **Update it after every change.**
+The `docs/project-management/SPEC.md` file is the authoritative technical and design specification for AzureStrike. Consult it for:
+- Game design (objectives, scoring, hints, achievements)
+- UI layout and component architecture
+- Command system and routing
+- Scenario YAML structure details
+- Extension points for adding new features
+
+## PLAN.md Guidelines
+
+The `docs/project-management/PLAN.md` file tracks project progress like a product/sprint document. **Update it after every change.**
 
 ### Required Updates
 - After completing ANY task, add it to the Current Phase's completed items

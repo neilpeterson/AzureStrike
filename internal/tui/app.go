@@ -148,13 +148,13 @@ func (a *App) View() string {
 		return a.renderBriefing()
 	}
 
-	if a.showDebrief {
-		return a.renderDebrief()
-	}
-
-	// Show full-screen fireworks celebration if active
+	// Show full-screen fireworks celebration if active (before debrief)
 	if a.fireworks.IsActive() {
 		return a.fireworks.View()
+	}
+
+	if a.showDebrief {
+		return a.renderDebrief()
 	}
 
 	// Main game view

@@ -2,6 +2,7 @@
 
 ## Core Documentation
 
+- [Project Specification](SPECIFICATION.md) - Authoritative technical and design reference (game mechanics, architecture, systems)
 - [CLI Specification](cli-spec.md) - Mocked Azure CLI command reference and behavior
 
 ## Scenario Specifications

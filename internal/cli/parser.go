@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/azurestrike/azurestrike/internal/azure/storage"
 	"github.com/azurestrike/azurestrike/internal/cli/az"
 	"github.com/azurestrike/azurestrike/internal/game"
 )
@@ -52,6 +54,8 @@ func (p *Parser) Execute(input string) Result {
 		result = Result{Output: azResult.Output, Success: azResult.Success, Error: azResult.Error}
 	case "curl":
 		result = p.handleCurl(args)
+	case "scan":
+		result = p.handleScan(args)
 	case "cat":
 		result = p.handleCat(args)
 	case "help":
@@ -171,6 +175,11 @@ func (p *Parser) handleCurl(args []string) Result {
 		return p.handleIMDS(url, headers)
 	}
 
+	// Handle Azure Blob Storage requests
+	if strings.Contains(url, ".blob.core.windows.net") {
+		return p.handleBlobStorage(url, headers)
+	}
+
 	return Result{
 		Output:  fmt.Sprintf("curl: (6) Could not resolve host: %s", extractHost(url)),
 		Success: false,
@@ -233,6 +242,333 @@ func extractHost(url string) string {
 		return parts[0]
 	}
 	return url
+}
+
+// handleBlobStorage handles curl requests to Azure Blob Storage endpoints
+func (p *Parser) handleBlobStorage(url string, headers map[string]string) Result {
+	// Parse the URL: https://<account>.blob.core.windows.net/<container>/<blob>?params
+	urlClean := strings.TrimPrefix(url, "http://")
+	urlClean = strings.TrimPrefix(urlClean, "https://")
+
+	// Split off query parameters
+	urlPath := urlClean
+	queryParams := ""
+	if idx := strings.Index(urlClean, "?"); idx != -1 {
+		urlPath = urlClean[:idx]
+		queryParams = urlClean[idx+1:]
+	}
+
+	// Extract account name from host
+	parts := strings.Split(urlPath, "/")
+	if len(parts) == 0 {
+		return Result{
+			Output:  "curl: (6) Could not resolve host",
+			Success: false,
+		}
+	}
+
+	host := parts[0]
+	accountName := strings.TrimSuffix(host, ".blob.core.windows.net")
+
+	// Check if storage account exists in our environment
+	account := p.gameState.StorageEnv.GetAccount(accountName)
+	if account == nil {
+		// Return realistic "account not found" response
+		return Result{
+			Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>AccountNotFound</Code>
+  <Message>The specified account %s does not exist.
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, accountName, time.Now().Format(time.RFC3339)),
+			Success: false,
+		}
+	}
+
+	// Just the account root - return account info
+	if len(parts) == 1 || (len(parts) == 2 && parts[1] == "") {
+		// Check for container list request: ?comp=list
+		if strings.Contains(queryParams, "comp=list") {
+			return p.listContainersXML(account)
+		}
+		// Just probing the account - return 400 (missing required params)
+		return Result{
+			Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>InvalidQueryParameterValue</Code>
+  <Message>Value for one of the query parameters specified in the request URI is invalid.
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, time.Now().Format(time.RFC3339)),
+			Success: true, // Account exists, just missing params
+		}
+	}
+
+	containerName := parts[1]
+	container := p.gameState.StorageEnv.GetContainer(accountName, containerName)
+
+	// Container doesn't exist
+	if container == nil {
+		return Result{
+			Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>ContainerNotFound</Code>
+  <Message>The specified container does not exist.
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, time.Now().Format(time.RFC3339)),
+			Success: false,
+		}
+	}
+
+	// Container exists but is private
+	if !container.IsPubliclyAccessible() {
+		return Result{
+			Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>AuthenticationFailed</Code>
+  <Message>Server failed to authenticate the request. Make sure the value of Authorization header is formed correctly.
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, time.Now().Format(time.RFC3339)),
+			Success: false,
+		}
+	}
+
+	// Check if listing blobs in container: ?restype=container&comp=list
+	if strings.Contains(queryParams, "comp=list") {
+		return p.listBlobsXML(account, container)
+	}
+
+	// Accessing a specific blob
+	if len(parts) >= 3 {
+		blobName := strings.Join(parts[2:], "/")
+		blob := p.gameState.StorageEnv.GetBlob(accountName, containerName, blobName)
+		if blob == nil {
+			return Result{
+				Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>BlobNotFound</Code>
+  <Message>The specified blob does not exist.
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, time.Now().Format(time.RFC3339)),
+				Success: false,
+			}
+		}
+		// Return blob content
+		return Result{
+			Output:  blob.Content,
+			Success: true,
+		}
+	}
+
+	// Just container path without query - return blob list
+	return p.listBlobsXML(account, container)
+}
+
+// listContainersXML returns containers in Azure XML format
+func (p *Parser) listContainersXML(account *storage.Account) Result {
+	var sb strings.Builder
+	sb.WriteString(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="https://` + account.Name + `.blob.core.windows.net/">
+  <Containers>
+`)
+	for _, c := range account.Containers {
+		sb.WriteString(fmt.Sprintf(`    <Container>
+      <Name>%s</Name>
+      <Properties>
+        <PublicAccess>%s</PublicAccess>
+      </Properties>
+    </Container>
+`, c.Name, c.PublicAccess))
+	}
+	sb.WriteString(`  </Containers>
+</EnumerationResults>`)
+
+	return Result{Output: sb.String(), Success: true}
+}
+
+// listBlobsXML returns blobs in Azure XML format
+func (p *Parser) listBlobsXML(account *storage.Account, container *storage.Container) Result {
+	var sb strings.Builder
+	sb.WriteString(`<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults ServiceEndpoint="https://` + account.Name + `.blob.core.windows.net/" ContainerName="` + container.Name + `">
+  <Blobs>
+`)
+	for _, b := range container.Blobs {
+		sb.WriteString(fmt.Sprintf(`    <Blob>
+      <Name>%s</Name>
+      <Properties>
+        <Content-Type>%s</Content-Type>
+        <Content-Length>%d</Content-Length>
+      </Properties>
+    </Blob>
+`, b.Name, b.ContentType, b.Size))
+	}
+	sb.WriteString(`  </Blobs>
+</EnumerationResults>`)
+
+	return Result{Output: sb.String(), Success: true}
+}
+
+// handleScan handles the scan command for storage account enumeration
+func (p *Parser) handleScan(args []string) Result {
+	if len(args) == 0 {
+		return Result{
+			Output: `scan - Azure Storage Account Scanner
+
+Usage:
+  scan storage <account-name>              Check if a specific account exists
+  scan storage --wordlist <type>           Scan using a built-in wordlist
+  scan storage --accounts <name1,name2>    Scan multiple account names
+
+Wordlist types:
+  common        Common storage account names (backup, storage, data, etc.)
+  company       Company-related patterns (requires --company flag)
+
+Examples:
+  scan storage contoso2024
+  scan storage --wordlist common
+  scan storage --wordlist company --company contoso
+  scan storage --accounts backup2024,storage2024,data2024
+
+After finding an account, probe for containers:
+  curl https://<account>.blob.core.windows.net/?comp=list
+
+Then check for public containers:
+  curl https://<account>.blob.core.windows.net/<container>?comp=list`,
+			Success: true,
+		}
+	}
+
+	if args[0] != "storage" {
+		return Result{
+			Output:  fmt.Sprintf("scan: unknown scan type '%s'. Currently supported: storage", args[0]),
+			Success: false,
+		}
+	}
+
+	// Parse scan arguments
+	var accountsToScan []string
+	var companyName string
+
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--wordlist":
+			if i+1 >= len(args) {
+				return Result{Output: "scan: --wordlist requires a type (common, company)", Success: false}
+			}
+			i++
+			wordlistType := args[i]
+			switch wordlistType {
+			case "common":
+				accountsToScan = append(accountsToScan, getCommonStorageNames()...)
+			case "company":
+				if companyName == "" {
+					return Result{Output: "scan: --wordlist company requires --company <name>", Success: false}
+				}
+				accountsToScan = append(accountsToScan, getCompanyStorageNames(companyName)...)
+			default:
+				return Result{Output: fmt.Sprintf("scan: unknown wordlist type '%s'", wordlistType), Success: false}
+			}
+		case "--company":
+			if i+1 >= len(args) {
+				return Result{Output: "scan: --company requires a company name", Success: false}
+			}
+			i++
+			companyName = strings.ToLower(args[i])
+			// If we already queued company wordlist, regenerate
+			accountsToScan = append(accountsToScan, getCompanyStorageNames(companyName)...)
+		case "--accounts":
+			if i+1 >= len(args) {
+				return Result{Output: "scan: --accounts requires a comma-separated list", Success: false}
+			}
+			i++
+			names := strings.Split(args[i], ",")
+			for _, n := range names {
+				accountsToScan = append(accountsToScan, strings.TrimSpace(n))
+			}
+		default:
+			// Single account name to scan
+			if !strings.HasPrefix(args[i], "--") {
+				accountsToScan = append(accountsToScan, args[i])
+			}
+		}
+	}
+
+	if len(accountsToScan) == 0 {
+		return Result{Output: "scan: no accounts specified. Use --wordlist, --accounts, or provide an account name", Success: false}
+	}
+
+	// Perform the scan
+	var sb strings.Builder
+	sb.WriteString("=== Azure Storage Account Scanner ===\n\n")
+	sb.WriteString(fmt.Sprintf("Scanning %d account name(s)...\n\n", len(accountsToScan)))
+
+	foundCount := 0
+	for _, name := range accountsToScan {
+		account := p.gameState.StorageEnv.GetAccount(name)
+		if account != nil {
+			foundCount++
+			sb.WriteString(fmt.Sprintf("[+] FOUND: %s.blob.core.windows.net\n", name))
+			sb.WriteString(fmt.Sprintf("    └─ Location: %s | Kind: %s\n", account.Location, account.Kind))
+		} else {
+			sb.WriteString(fmt.Sprintf("[-] Not found: %s\n", name))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nScan complete: %d/%d accounts found\n", foundCount, len(accountsToScan)))
+
+	if foundCount > 0 {
+		sb.WriteString("\nNext steps:\n")
+		sb.WriteString("  1. List containers: curl https://<account>.blob.core.windows.net/?comp=list\n")
+		sb.WriteString("  2. Check container access: curl https://<account>.blob.core.windows.net/<container>?comp=list\n")
+		sb.WriteString("  3. Download public blobs: curl https://<account>.blob.core.windows.net/<container>/<blob>\n")
+	}
+
+	return Result{Output: sb.String(), Success: true}
+}
+
+// getCommonStorageNames returns common storage account name patterns
+func getCommonStorageNames() []string {
+	return []string{
+		"backup", "backups", "storage", "data", "files",
+		"uploads", "assets", "static", "media", "public",
+		"private", "logs", "archive", "temp", "dev",
+		"prod", "production", "staging", "test", "cdn",
+	}
+}
+
+// getCompanyStorageNames generates storage names based on company name
+func getCompanyStorageNames(company string) []string {
+	suffixes := []string{
+		"", "storage", "data", "backup", "backups",
+		"files", "assets", "blob", "store", "2024", "2023",
+		"prod", "dev", "staging",
+	}
+
+	years := []string{"", "2024", "2023", "2022"}
+
+	var names []string
+	for _, suffix := range suffixes {
+		for _, year := range years {
+			name := company
+			if suffix != "" {
+				name = company + suffix
+			}
+			if year != "" && suffix != year {
+				name = name + year
+			}
+			// Azure storage accounts must be 3-24 chars, lowercase alphanumeric
+			if len(name) >= 3 && len(name) <= 24 {
+				names = append(names, name)
+			}
+		}
+	}
+
+	return names
 }
 
 func (p *Parser) handleCat(args []string) Result {
@@ -329,26 +665,30 @@ func (p *Parser) handleHelp(args []string) Result {
 	return Result{
 		Output: `AzureStrike - Available Commands:
 
+RECONNAISSANCE:
+  scan storage ...   Scan for Azure storage accounts
+  curl <url>         Make HTTP requests (blob storage, IMDS)
+
 AZURE CLI (mocked):
-  az storage ...    Storage account operations
-  az ad ...         Azure AD operations
-  az vm ...         Virtual machine operations
+  az storage ...     Storage account operations
+  az ad ...          Azure AD operations
+  az vm ...          Virtual machine operations
 
-STORAGE:
-  cat <path>        View blob contents (e.g., cat backups/secrets.txt)
-
-NETWORK:
-  curl <url>        Make HTTP requests (IMDS supported)
+STORAGE ACCESS:
+  cat <path>         View blob contents (e.g., cat backups/secrets.txt)
+  curl https://<account>.blob.core.windows.net/<container>/<blob>
 
 GAME:
-  objective         Show current objectives
-  score             Show current score
-  hint [obj_id]     Get a hint for an objective
-  help [command]    Show help
+  objective          Show current objectives
+  score              Show current score
+  hint [obj_id]      Get a hint for an objective
+  help [command]     Show help
 
 SYSTEM:
-  clear             Clear the terminal
-  exit              Exit the game`,
+  clear              Clear the terminal
+  exit               Exit the game
+
+Try 'scan' or 'scan storage' for scanner help.`,
 		Success: true,
 	}
 }
