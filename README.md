@@ -1,8 +1,8 @@
 # AzureStrike
 
-[![CI](https://github.com/azurestrike/azurestrike/actions/workflows/ci.yml/badge.svg)](https://github.com/azurestrike/azurestrike/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/azurestrike/azurestrike/branch/main/graph/badge.svg)](https://codecov.io/gh/azurestrike/azurestrike)
-[![Go Report Card](https://goreportcard.com/badge/github.com/azurestrike/azurestrike)](https://goreportcard.com/report/github.com/azurestrike/azurestrike)
+[![CI](https://github.com/neilpeterson/AzureStrike/actions/workflows/ci.yml/badge.svg)](https://github.com/neilpeterson/AzureStrike/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/neilpeterson/AzureStrike/branch/main/graph/badge.svg)](https://codecov.io/gh/neilpeterson/AzureStrike)
+[![Go Report Card](https://goreportcard.com/badge/github.com/neilpeterson/AzureStrike)](https://goreportcard.com/report/github.com/neilpeterson/AzureStrike)
 
 A terminal-based game that simulates Azure security scenarios for training security professionals. Features narrative-driven missions with a hybrid interface (CLI commands + TUI status panels) and a scoring/achievement system.
 
@@ -146,14 +146,23 @@ Objectives are completed when the player executes commands matching trigger patt
 # Run tests
 make test
 
-# Run with coverage
+# Run tests with coverage
 make test-cover
+
+# Run tests with race detector
+make test-race
 
 # Format code
 make fmt
 
-# Run linter
+# Run go vet
 make vet
+
+# Run golangci-lint
+make lint
+
+# Run all CI checks locally
+make ci
 ```
 
 ## Technology Stack
