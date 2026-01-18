@@ -69,6 +69,19 @@ func TestRecordCommandTriggersObjective(t *testing.T) {
 	assert.Equal(t, 100, state.Score.Points)
 }
 
+func TestFailedCommandDoesNotTriggerObjective(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	// Run a matching command but with success=false
+	completed := state.RecordCommand("az storage account list", "error: command failed", false)
+
+	// Should NOT complete the objective
+	assert.Empty(t, completed)
+	assert.NotContains(t, state.CompletedObjectives, "obj1")
+	assert.Equal(t, 0, state.Score.Points)
+}
+
 func TestRecordCommandWithRegexTrigger(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)

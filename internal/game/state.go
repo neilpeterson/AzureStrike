@@ -159,6 +159,12 @@ func (s *State) RecordCommand(cmd, output string, success bool) []string {
 		Success:   success,
 	})
 
+	// Only check for objective completion if command succeeded
+	// Failed commands should not award credit
+	if !success {
+		return nil
+	}
+
 	// Check for command-based objective completion
 	return s.checkCommandObjectives(cmd)
 }
