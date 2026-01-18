@@ -69,6 +69,19 @@ func TestRecordCommandTriggersObjective(t *testing.T) {
 	assert.Equal(t, 100, state.Score.Points)
 }
 
+func TestFailedCommandDoesNotTriggerObjective(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	// Run a matching command but with success=false
+	completed := state.RecordCommand("az storage account list", "error: command failed", false)
+
+	// Should NOT complete the objective
+	assert.Empty(t, completed)
+	assert.NotContains(t, state.CompletedObjectives, "obj1")
+	assert.Equal(t, 0, state.Score.Points)
+}
+
 func TestRecordCommandWithRegexTrigger(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)
@@ -79,40 +92,40 @@ func TestRecordCommandWithRegexTrigger(t *testing.T) {
 	assert.Contains(t, state.CompletedObjectives, "obj2")
 }
 
-func TestMatchesTriggerSubstring(t *testing.T) {
+func TestMatchesCommandTriggerSubstring(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)
 
 	t.Run("matches substring", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("az storage account list", "az storage"))
+		assert.True(t, state.matchesCommandTrigger("az storage account list", "az storage"))
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("AZ STORAGE account list", "az storage"))
+		assert.True(t, state.matchesCommandTrigger("AZ STORAGE account list", "az storage"))
 	})
 
 	t.Run("no match", func(t *testing.T) {
-		assert.False(t, state.matchesTrigger("az vm list", "az storage"))
+		assert.False(t, state.matchesCommandTrigger("az vm list", "az storage"))
 	})
 }
 
-func TestMatchesTriggerRegex(t *testing.T) {
+func TestMatchesCommandTriggerRegex(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)
 
 	t.Run("matches regex", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("curl http://169.254.169.254/metadata/instance", "regex:curl.*metadata"))
+		assert.True(t, state.matchesCommandTrigger("curl http://169.254.169.254/metadata/instance", "regex:curl.*metadata"))
 	})
 
 	t.Run("regex no match", func(t *testing.T) {
-		assert.False(t, state.matchesTrigger("wget http://example.com", "regex:curl.*metadata"))
+		assert.False(t, state.matchesCommandTrigger("wget http://example.com", "regex:curl.*metadata"))
 	})
 
 	t.Run("complex regex", func(t *testing.T) {
 		trigger := "regex:az storage blob (list|download)"
-		assert.True(t, state.matchesTrigger("az storage blob list", trigger))
-		assert.True(t, state.matchesTrigger("az storage blob download", trigger))
-		assert.False(t, state.matchesTrigger("az storage blob upload", trigger))
+		assert.True(t, state.matchesCommandTrigger("az storage blob list", trigger))
+		assert.True(t, state.matchesCommandTrigger("az storage blob download", trigger))
+		assert.False(t, state.matchesCommandTrigger("az storage blob upload", trigger))
 	})
 }
 
@@ -372,4 +385,257 @@ func TestExtractedTokensInitialized(t *testing.T) {
 
 	assert.NotNil(t, state.ExtractedTokens)
 	assert.Empty(t, state.ExtractedTokens)
+}
+
+// Tests for event-based objective system
+
+func createStateEventScenario() *scenario.Scenario {
+	return &scenario.Scenario{
+		ID:         "event-test-scenario",
+		Name:       "Event Test Scenario",
+		Difficulty: "beginner",
+		Objectives: []scenario.Objective{
+			{ID: "cmd_obj", Description: "Command-based objective", Trigger: "az storage", Points: 100},
+			{ID: "event_obj", Description: "Event-based objective", Trigger: "state:token_extracted", Points: 150},
+			{ID: "event_target", Description: "Event with target", Trigger: "state:blob_read:secrets.txt", Points: 200},
+			{ID: "event_wildcard", Description: "Event with wildcard", Trigger: "state:blob_listed:*", Points: 75},
+		},
+	}
+}
+
+func TestEventsInitialized(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	assert.NotNil(t, state.Events)
+	assert.Empty(t, state.Events)
+}
+
+func TestEmitEvent(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	completed := state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", map[string]string{
+		"principal_id": "test-principal",
+	})
+
+	assert.Len(t, state.Events, 1)
+	assert.Equal(t, EventTokenExtracted, state.Events[0].Type)
+	assert.Equal(t, "https://storage.azure.com/", state.Events[0].Target)
+	assert.Equal(t, "test-principal", state.Events[0].Data["principal_id"])
+	assert.Empty(t, completed) // No state-based objectives in test scenario
+}
+
+func TestEmitEventTriggersStateObjective(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	completed := state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+
+	assert.Contains(t, completed, "event_obj")
+	assert.Contains(t, state.CompletedObjectives, "event_obj")
+	assert.Equal(t, 150, state.Score.Points)
+}
+
+func TestEmitEventWithTargetMatch(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Should not match - wrong target
+	completed := state.EmitEvent(EventBlobRead, "other-file.txt", nil)
+	assert.Empty(t, completed)
+
+	// Should match - correct target
+	completed = state.EmitEvent(EventBlobRead, "secrets.txt", nil)
+	assert.Contains(t, completed, "event_target")
+	assert.Equal(t, 200, state.Score.Points)
+}
+
+func TestEmitEventWithWildcardMatch(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Any blob_listed event should match the wildcard trigger
+	completed := state.EmitEvent(EventBlobListed, "any-container", nil)
+
+	assert.Contains(t, completed, "event_wildcard")
+	assert.Equal(t, 75, state.Score.Points)
+}
+
+func TestMatchesStateTrigger(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	t.Run("simple event type match", func(t *testing.T) {
+		event := GameEvent{Type: EventTokenExtracted, Target: "https://storage.azure.com/"}
+		assert.True(t, state.matchesStateTrigger(event, "state:token_extracted"))
+	})
+
+	t.Run("event type with target match", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "secrets.txt"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+
+	t.Run("event type with wrong target", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "other.txt"}
+		assert.False(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+
+	t.Run("event type with wildcard target", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "any-file.txt"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:*"))
+	})
+
+	t.Run("wrong event type", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobListed, Target: "container"}
+		assert.False(t, state.matchesStateTrigger(event, "state:token_extracted"))
+	})
+
+	t.Run("case insensitive target match", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "SECRETS.TXT"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+}
+
+func TestCommandObjectivesSkipStateTriggersAndViceVersa(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Command should only trigger command-based objectives
+	completed := state.RecordCommand("az storage account list", "output", true)
+	assert.Contains(t, completed, "cmd_obj")
+	assert.NotContains(t, completed, "event_obj")
+
+	// Event should only trigger state-based objectives
+	completed = state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+	assert.Contains(t, completed, "event_obj")
+	assert.NotContains(t, completed, "cmd_obj") // Already completed anyway
+}
+
+func TestMultipleEventsAndObjectives(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// First event
+	state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+	assert.Len(t, state.CompletedObjectives, 1)
+
+	// Second event
+	state.EmitEvent(EventBlobListed, "container", nil)
+	assert.Len(t, state.CompletedObjectives, 2)
+
+	// Third event
+	state.EmitEvent(EventBlobRead, "secrets.txt", nil)
+	assert.Len(t, state.CompletedObjectives, 3)
+
+	// Command
+	state.RecordCommand("az storage account list", "output", true)
+	assert.Len(t, state.CompletedObjectives, 4)
+
+	// All objectives complete
+	assert.True(t, state.AllObjectivesComplete())
+}
+
+// Tests for prerequisite system
+
+func createPrerequisiteScenario() *scenario.Scenario {
+	return &scenario.Scenario{
+		ID:         "prereq-test",
+		Name:       "Prerequisite Test",
+		Difficulty: "beginner",
+		Objectives: []scenario.Objective{
+			{ID: "step1", Description: "First step", Trigger: "state:step1", Points: 50},
+			{ID: "step2", Description: "Second step", Trigger: "state:step2", Points: 75, Requires: []string{"step1"}},
+			{ID: "step3", Description: "Third step", Trigger: "state:step3", Points: 100, Requires: []string{"step2"}},
+			{ID: "cmd_step", Description: "Command step", Trigger: "az test", Points: 50, Requires: []string{"step1"}},
+		},
+	}
+}
+
+func TestPrerequisitesMet(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	t.Run("no prerequisites returns true", func(t *testing.T) {
+		obj := sc.GetObjective("step1")
+		assert.True(t, state.prerequisitesMet(*obj))
+	})
+
+	t.Run("unmet prerequisite returns false", func(t *testing.T) {
+		obj := sc.GetObjective("step2")
+		assert.False(t, state.prerequisitesMet(*obj))
+	})
+
+	t.Run("met prerequisite returns true", func(t *testing.T) {
+		state.CompleteObjective("step1")
+		obj := sc.GetObjective("step2")
+		assert.True(t, state.prerequisitesMet(*obj))
+	})
+}
+
+func TestPrerequisiteBlocksCompletion(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try to complete step2 without completing step1 first
+	completed := state.EmitEvent("step2", "", nil)
+
+	assert.Empty(t, completed)
+	assert.NotContains(t, state.CompletedObjectives, "step2")
+}
+
+func TestPrerequisiteAllowsCompletionInOrder(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Complete step1 first
+	completed := state.EmitEvent("step1", "", nil)
+	assert.Contains(t, completed, "step1")
+
+	// Now step2 should be completable
+	completed = state.EmitEvent("step2", "", nil)
+	assert.Contains(t, completed, "step2")
+
+	// Now step3 should be completable
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Contains(t, completed, "step3")
+}
+
+func TestPrerequisiteChainEnforcement(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try to skip to step3 (requires step2, which requires step1)
+	completed := state.EmitEvent("step3", "", nil)
+	assert.Empty(t, completed)
+
+	// Complete step1
+	state.EmitEvent("step1", "", nil)
+
+	// Step3 still shouldn't work (step2 not done)
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Empty(t, completed)
+
+	// Complete step2
+	state.EmitEvent("step2", "", nil)
+
+	// Now step3 works
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Contains(t, completed, "step3")
+}
+
+func TestPrerequisiteWorksForCommandTriggers(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try command trigger before prerequisite is met
+	completed := state.RecordCommand("az test command", "output", true)
+	assert.NotContains(t, completed, "cmd_step")
+
+	// Complete step1 (the prerequisite)
+	state.EmitEvent("step1", "", nil)
+
+	// Now command trigger should work
+	completed = state.RecordCommand("az test command", "output", true)
+	assert.Contains(t, completed, "cmd_step")
 }

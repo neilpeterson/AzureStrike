@@ -24,6 +24,7 @@ type State struct {
 	Score               *Score
 	Status              GameStatus
 	ExtractedTokens     map[string]*ExtractedToken // token -> metadata
+	Events              []GameEvent                // Event log for state-based triggers
 }
 
 // ExtractedToken represents a token extracted via IMDS or other means
@@ -41,6 +42,27 @@ type CommandRecord struct {
 	Timestamp time.Time
 	Success   bool
 }
+
+// GameEvent represents a game state change that can trigger objectives
+type GameEvent struct {
+	Type      string            // Event type (e.g., "token_extracted", "blob_read")
+	Target    string            // Target of the event (e.g., blob name, resource URL)
+	Timestamp time.Time         // When the event occurred
+	Data      map[string]string // Additional event metadata
+}
+
+// Event type constants
+const (
+	EventTokenExtracted       = "token_extracted"
+	EventMetadataRetrieved    = "metadata_retrieved"
+	EventBlobRead             = "blob_read"
+	EventBlobListed           = "blob_listed"
+	EventContainerListed      = "container_listed"
+	EventStorageAuthenticated = "storage_authenticated"
+	EventSecretDiscovered     = "secret_discovered"
+	EventIMDSProbed           = "imds_probed"
+	EventStorageDiscovered    = "storage_discovered"
+)
 
 // GameStatus represents the current status of the game
 type GameStatus int
@@ -65,6 +87,7 @@ func NewState(sc *scenario.Scenario) *State {
 		Score:               NewScore(),
 		Status:              StatusPlaying,
 		ExtractedTokens:     make(map[string]*ExtractedToken),
+		Events:              []GameEvent{},
 	}
 
 	// Initialize storage environment from scenario resources
@@ -137,12 +160,32 @@ func (s *State) RecordCommand(cmd, output string, success bool) []string {
 		Success:   success,
 	})
 
-	// Check for objective completion
-	return s.checkObjectives(cmd)
+	// Only check for objective completion if command succeeded
+	// Failed commands should not award credit
+	if !success {
+		return nil
+	}
+
+	// Check for command-based objective completion
+	return s.checkCommandObjectives(cmd)
 }
 
-// checkObjectives tests if a command triggers any objectives
-func (s *State) checkObjectives(cmd string) []string {
+// EmitEvent records a game event and checks for state-based objective completion
+func (s *State) EmitEvent(eventType, target string, data map[string]string) []string {
+	event := GameEvent{
+		Type:      eventType,
+		Target:    target,
+		Timestamp: time.Now(),
+		Data:      data,
+	}
+	s.Events = append(s.Events, event)
+
+	// Check for state-based objective completion
+	return s.checkStateObjectives(event)
+}
+
+// checkCommandObjectives tests if a command triggers any command-based objectives
+func (s *State) checkCommandObjectives(cmd string) []string {
 	var completed []string
 
 	for _, obj := range s.Scenario.Objectives {
@@ -151,7 +194,17 @@ func (s *State) checkObjectives(cmd string) []string {
 			continue
 		}
 
-		if s.matchesTrigger(cmd, obj.Trigger) {
+		// Skip state-based triggers (they're checked by EmitEvent)
+		if strings.HasPrefix(obj.Trigger, "state:") {
+			continue
+		}
+
+		// Skip if prerequisites not met
+		if !s.prerequisitesMet(obj) {
+			continue
+		}
+
+		if s.matchesCommandTrigger(cmd, obj.Trigger) {
 			s.CompleteObjective(obj.ID)
 			completed = append(completed, obj.ID)
 		}
@@ -160,12 +213,50 @@ func (s *State) checkObjectives(cmd string) []string {
 	return completed
 }
 
-// matchesTrigger checks if a command matches an objective trigger pattern
-func (s *State) matchesTrigger(cmd, trigger string) bool {
+// checkStateObjectives tests if an event triggers any state-based objectives
+func (s *State) checkStateObjectives(event GameEvent) []string {
+	var completed []string
+
+	for _, obj := range s.Scenario.Objectives {
+		// Skip already completed objectives
+		if _, done := s.CompletedObjectives[obj.ID]; done {
+			continue
+		}
+
+		// Only check state-based triggers
+		if !strings.HasPrefix(obj.Trigger, "state:") {
+			continue
+		}
+
+		// Skip if prerequisites not met
+		if !s.prerequisitesMet(obj) {
+			continue
+		}
+
+		if s.matchesStateTrigger(event, obj.Trigger) {
+			s.CompleteObjective(obj.ID)
+			completed = append(completed, obj.ID)
+		}
+	}
+
+	return completed
+}
+
+// prerequisitesMet checks if all required objectives are completed
+func (s *State) prerequisitesMet(obj scenario.Objective) bool {
+	for _, reqID := range obj.Requires {
+		if _, done := s.CompletedObjectives[reqID]; !done {
+			return false
+		}
+	}
+	return true
+}
+
+// matchesCommandTrigger checks if a command matches a command-based trigger pattern
+func (s *State) matchesCommandTrigger(cmd, trigger string) bool {
 	// Triggers can be:
 	// - Simple substring match: "blob list"
 	// - Regex pattern: "regex:az storage blob (list|download)"
-	// - Command with specific args: "az storage blob download --name secrets.txt"
 
 	if strings.HasPrefix(trigger, "regex:") {
 		pattern := strings.TrimPrefix(trigger, "regex:")
@@ -175,6 +266,42 @@ func (s *State) matchesTrigger(cmd, trigger string) bool {
 
 	// Simple substring match (case-insensitive)
 	return strings.Contains(strings.ToLower(cmd), strings.ToLower(trigger))
+}
+
+// matchesStateTrigger checks if an event matches a state-based trigger
+func (s *State) matchesStateTrigger(event GameEvent, trigger string) bool {
+	// State triggers have format: "state:event_type" or "state:event_type:target"
+	// Examples:
+	//   "state:token_extracted" - matches any token extraction
+	//   "state:blob_read:secrets.txt" - matches reading specific blob
+	//   "state:blob_read:*" - matches reading any blob
+
+	parts := strings.SplitN(strings.TrimPrefix(trigger, "state:"), ":", 2)
+	if len(parts) == 0 {
+		return false
+	}
+
+	eventType := parts[0]
+
+	// Check event type matches
+	if event.Type != eventType {
+		return false
+	}
+
+	// If no target specified, any event of this type matches
+	if len(parts) == 1 {
+		return true
+	}
+
+	targetPattern := parts[1]
+
+	// Wildcard matches any target
+	if targetPattern == "*" {
+		return true
+	}
+
+	// Exact target match (case-insensitive)
+	return strings.EqualFold(event.Target, targetPattern)
 }
 
 // CompleteObjective marks an objective as completed

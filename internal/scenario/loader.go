@@ -41,12 +41,13 @@ type Resources struct {
 
 // Objective represents a goal the player must achieve
 type Objective struct {
-	ID          string `yaml:"id"`
-	Description string `yaml:"description"`
-	Trigger     string `yaml:"trigger"` // Action pattern that completes this objective
-	Points      int    `yaml:"points"`
-	Hidden      bool   `yaml:"hidden"` // Hidden objectives are revealed when completed
-	Order       int    `yaml:"order"`  // Suggested order (0 = any order)
+	ID          string   `yaml:"id"`
+	Description string   `yaml:"description"`
+	Trigger     string   `yaml:"trigger"` // Action pattern that completes this objective
+	Points      int      `yaml:"points"`
+	Hidden      bool     `yaml:"hidden"`   // Hidden objectives are revealed when completed
+	Order       int      `yaml:"order"`    // Suggested order (0 = any order)
+	Requires    []string `yaml:"requires"` // IDs of objectives that must be completed first
 }
 
 // Hint provides progressive assistance to the player
@@ -167,6 +168,18 @@ func (s *Scenario) Validate() error {
 			return fmt.Errorf("duplicate objective ID: %s", obj.ID)
 		}
 		seen[obj.ID] = true
+	}
+
+	// Validate that required objectives exist
+	for _, obj := range s.Objectives {
+		for _, reqID := range obj.Requires {
+			if !seen[reqID] {
+				return fmt.Errorf("objective %s requires unknown objective: %s", obj.ID, reqID)
+			}
+			if reqID == obj.ID {
+				return fmt.Errorf("objective %s cannot require itself", obj.ID)
+			}
+		}
 	}
 
 	return nil

@@ -98,28 +98,34 @@ resources:
 objectives:
   - id: discover_account
     description: "Discover Contoso's storage account endpoint"
-    trigger: "regex:(scan storage.*(contoso|--company)|curl.*contosostorage2024\\.blob\\.core\\.windows\\.net)"
+    trigger: "state:storage_discovered:contosostorage2024"
     points: 50
     order: 1
 
   - id: list_containers
     description: "Enumerate containers in the storage account"
-    trigger: "regex:curl.*contosostorage2024\\.blob\\.core\\.windows\\.net.*comp=list"
+    trigger: "state:container_listed:contosostorage2024"
     points: 75
     order: 2
+    requires:
+      - discover_account
 
   - id: find_public_container
     description: "Identify the publicly accessible backup container"
-    trigger: "regex:curl.*contosostorage2024\\.blob\\.core\\.windows\\.net/backups"
+    trigger: "state:blob_listed:backups"
     points: 100
     order: 3
+    requires:
+      - list_containers
 
   - id: extract_secrets
     description: "Download and examine sensitive backup files"
-    trigger: "regex:(curl.*backups/(secrets|config)|cat.*(secrets|config))"
+    trigger: "state:blob_read:secrets.txt"
     points: 150
     order: 4
     hidden: false
+    requires:
+      - find_public_container
 
 hints:
   - objective_id: discover_account
