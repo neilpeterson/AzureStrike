@@ -183,10 +183,8 @@ func (f *Fireworks) View() string {
 		}
 	}
 
-	// Build output with border
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("226")).
+	// Build output
+	contentStyle := lipgloss.NewStyle().
 		Padding(0, 1)
 
 	titleStyle := lipgloss.NewStyle().
@@ -218,7 +216,7 @@ func (f *Fireworks) View() string {
 		f.height,
 		lipgloss.Center,
 		lipgloss.Center,
-		borderStyle.Render(content.String()),
+		contentStyle.Render(content.String()),
 	)
 }
 

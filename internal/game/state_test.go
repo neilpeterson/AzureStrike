@@ -306,3 +306,70 @@ func TestGameStatus(t *testing.T) {
 	assert.Equal(t, GameStatus(1), StatusCompleted)
 	assert.Equal(t, GameStatus(2), StatusFailed)
 }
+
+func TestStoreToken(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	state.StoreToken("test-token-123", "https://storage.azure.com/", "principal-id-123")
+
+	assert.Contains(t, state.ExtractedTokens, "test-token-123")
+	assert.Equal(t, "https://storage.azure.com/", state.ExtractedTokens["test-token-123"].Resource)
+	assert.Equal(t, "principal-id-123", state.ExtractedTokens["test-token-123"].PrincipalID)
+}
+
+func TestValidateToken(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	// Store a token scoped to storage
+	state.StoreToken("storage-token", "https://storage.azure.com/", "principal-1")
+	// Store a token scoped to management
+	state.StoreToken("management-token", "https://management.azure.com/", "principal-2")
+
+	t.Run("valid storage token for storage resource", func(t *testing.T) {
+		assert.True(t, state.ValidateToken("storage-token", "storage"))
+	})
+
+	t.Run("management token works for storage", func(t *testing.T) {
+		// ARM tokens can access storage
+		assert.True(t, state.ValidateToken("management-token", "storage"))
+	})
+
+	t.Run("management token for management resource", func(t *testing.T) {
+		assert.True(t, state.ValidateToken("management-token", "management"))
+	})
+
+	t.Run("storage token invalid for management", func(t *testing.T) {
+		assert.False(t, state.ValidateToken("storage-token", "management"))
+	})
+
+	t.Run("invalid token", func(t *testing.T) {
+		assert.False(t, state.ValidateToken("nonexistent-token", "storage"))
+	})
+}
+
+func TestGetTokenPrincipal(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	state.StoreToken("test-token", "https://storage.azure.com/", "principal-abc")
+
+	t.Run("returns principal for valid token", func(t *testing.T) {
+		principal := state.GetTokenPrincipal("test-token")
+		assert.Equal(t, "principal-abc", principal)
+	})
+
+	t.Run("returns empty for invalid token", func(t *testing.T) {
+		principal := state.GetTokenPrincipal("invalid-token")
+		assert.Empty(t, principal)
+	})
+}
+
+func TestExtractedTokensInitialized(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	assert.NotNil(t, state.ExtractedTokens)
+	assert.Empty(t, state.ExtractedTokens)
+}

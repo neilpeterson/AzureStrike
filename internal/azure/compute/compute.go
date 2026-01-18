@@ -15,6 +15,16 @@ type VirtualMachine struct {
 	Tags              map[string]string `json:"tags,omitempty" yaml:"tags,omitempty"`
 	NetworkInterfaces []string          `json:"networkInterfaces,omitempty" yaml:"network_interfaces,omitempty"`
 	Identity          *VMIdentity       `json:"identity,omitempty" yaml:"identity,omitempty"`
+	// IMDS-specific fields
+	VMID                 string `json:"vmId,omitempty" yaml:"vm_id,omitempty"`                     // UUID format for IMDS
+	SubscriptionID       string `json:"subscriptionId,omitempty" yaml:"subscription_id,omitempty"` // Azure subscription
+	Offer                string `json:"offer,omitempty" yaml:"offer,omitempty"`                    // Image offer (e.g., "UbuntuServer")
+	Publisher            string `json:"publisher,omitempty" yaml:"publisher,omitempty"`            // Image publisher (e.g., "Canonical")
+	SKU                  string `json:"sku,omitempty" yaml:"sku,omitempty"`                        // Image SKU (e.g., "18.04-LTS")
+	Version              string `json:"version,omitempty" yaml:"version,omitempty"`                // Image version
+	PlatformFaultDomain  string `json:"platformFaultDomain,omitempty" yaml:"platform_fault_domain,omitempty"`
+	PlatformUpdateDomain string `json:"platformUpdateDomain,omitempty" yaml:"platform_update_domain,omitempty"`
+	Zone                 string `json:"zone,omitempty" yaml:"zone,omitempty"`
 }
 
 // VMIdentity represents managed identity configuration

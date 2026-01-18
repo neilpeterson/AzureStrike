@@ -190,3 +190,26 @@ func (s *Scenario) TotalPoints() int {
 	}
 	return total
 }
+
+// GetNextScenario returns the next scenario after the current one, or nil if none
+func GetNextScenario(scenariosDir, currentID string) (*Scenario, error) {
+	scenarios, err := ListScenarios(scenariosDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Scenarios are returned in directory order (alphabetical by folder name)
+	// Folder names like "01-storage-breach", "02-imds-token-theft" sort correctly
+	foundCurrent := false
+	for _, sc := range scenarios {
+		if foundCurrent {
+			// Return the next scenario after the current one
+			return LoadByID(scenariosDir, sc.ID)
+		}
+		if sc.ID == currentID {
+			foundCurrent = true
+		}
+	}
+
+	return nil, nil // No next scenario (completed all scenarios)
+}

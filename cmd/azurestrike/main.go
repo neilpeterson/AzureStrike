@@ -53,7 +53,7 @@ func main() {
 	gameState := game.NewState(sc)
 
 	// Create and run TUI
-	app := tui.NewApp(gameState)
+	app := tui.NewApp(gameState, "scenarios")
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {

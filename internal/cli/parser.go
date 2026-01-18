@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,9 +28,22 @@ type Result struct {
 
 // NewParser creates a new command parser
 func NewParser(state *game.State) *Parser {
+	// Create token getter function that retrieves the latest token
+	tokenGetter := func() *az.TokenInfo {
+		token := state.GetLatestToken()
+		if token == nil {
+			return nil
+		}
+		return &az.TokenInfo{
+			Token:       token.Token,
+			Resource:    token.Resource,
+			PrincipalID: token.PrincipalID,
+		}
+	}
+
 	return &Parser{
 		gameState: state,
-		azHandler: az.NewHandler(state.StorageEnv, state.EntraEnv, state.ComputeEnv),
+		azHandler: az.NewHandler(state.StorageEnv, state.EntraEnv, state.ComputeEnv, tokenGetter),
 	}
 }
 
@@ -186,52 +202,403 @@ func (p *Parser) handleCurl(args []string) Result {
 	}
 }
 
-func (p *Parser) handleIMDS(url string, headers map[string]string) Result {
-	// Check for required Metadata header
+func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
+	// Check for required Metadata header (real Azure returns JSON error)
 	if headers["Metadata"] != "true" {
 		return Result{
-			Output:  "400 Bad Request: Required metadata header not specified",
+			Output:  `{"error": "Bad request. Required metadata header not specified"}`,
 			Success: false,
 		}
 	}
 
-	// Mock IMDS responses
-	if strings.Contains(url, "/metadata/identity/oauth2/token") {
+	// Parse URL for query parameters
+	parsedURL, _ := url.Parse(imdsURL)
+	queryParams := parsedURL.Query()
+	apiVersion := queryParams.Get("api-version")
+
+	// Real IMDS requires api-version for most endpoints (except /metadata root)
+	if apiVersion == "" && !strings.HasSuffix(imdsURL, "/metadata") && !strings.HasSuffix(imdsURL, "/metadata/") {
 		return Result{
-			Output: `{
-  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6Ik1uQ19WWmNBVG...",
-  "client_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "expires_in": "28799",
-  "expires_on": "1234567890",
-  "ext_expires_in": "28799",
-  "not_before": "1234567890",
-  "resource": "https://management.azure.com/",
-  "token_type": "Bearer"
-}`,
+			Output: `{"error": "Bad request. api-version was not specified in the request. For more information refer to aka.ms/azureimds", "newest-versions": ["2024-03-15", "2023-11-15", "2023-07-01"]}`,
+			Success: false,
+		}
+	}
+
+	// Get the first VM with managed identity (simulating we're "on" that VM)
+	var currentVM *struct {
+		Name                 string
+		ResourceGroup        string
+		Location             string
+		VMSize               string
+		OSType               string
+		AdminUsername        string
+		PublicIP             string
+		PrivateIP            string
+		Tags                 map[string]string
+		PrincipalID          string
+		TenantID             string
+		IdentityType         string
+		VMID                 string
+		SubscriptionID       string
+		Offer                string
+		Publisher            string
+		SKU                  string
+		Version              string
+		PlatformFaultDomain  string
+		PlatformUpdateDomain string
+		Zone                 string
+	}
+
+	for _, vm := range p.gameState.ComputeEnv.ListVMs() {
+		if vm.Identity != nil && vm.Identity.Type != "" {
+			// Set defaults for optional fields
+			vmID := vm.VMID
+			if vmID == "" {
+				vmID = "02aab8a4-74ef-476e-8182-f6d2ba4166a6" // Default UUID
+			}
+			subscriptionID := vm.SubscriptionID
+			if subscriptionID == "" {
+				subscriptionID = "aaaabbbb-cccc-dddd-eeee-ffffgggghhhh"
+			}
+			vmSize := vm.VMSize
+			if vmSize == "" {
+				vmSize = "Standard_D2s_v3"
+			}
+			osType := vm.OSType
+			if osType == "" {
+				osType = "Linux"
+			}
+			offer := vm.Offer
+			if offer == "" {
+				offer = "0001-com-ubuntu-server-focal"
+			}
+			publisher := vm.Publisher
+			if publisher == "" {
+				publisher = "canonical"
+			}
+			sku := vm.SKU
+			if sku == "" {
+				sku = "20_04-lts-gen2"
+			}
+			version := vm.Version
+			if version == "" {
+				version = "20.04.202402290"
+			}
+			pfd := vm.PlatformFaultDomain
+			if pfd == "" {
+				pfd = "0"
+			}
+			pud := vm.PlatformUpdateDomain
+			if pud == "" {
+				pud = "0"
+			}
+
+			currentVM = &struct {
+				Name                 string
+				ResourceGroup        string
+				Location             string
+				VMSize               string
+				OSType               string
+				AdminUsername        string
+				PublicIP             string
+				PrivateIP            string
+				Tags                 map[string]string
+				PrincipalID          string
+				TenantID             string
+				IdentityType         string
+				VMID                 string
+				SubscriptionID       string
+				Offer                string
+				Publisher            string
+				SKU                  string
+				Version              string
+				PlatformFaultDomain  string
+				PlatformUpdateDomain string
+				Zone                 string
+			}{
+				Name:                 vm.Name,
+				ResourceGroup:        vm.ResourceGroup,
+				Location:             vm.Location,
+				VMSize:               vmSize,
+				OSType:               osType,
+				AdminUsername:        vm.AdminUsername,
+				PublicIP:             vm.PublicIPAddress,
+				PrivateIP:            vm.PrivateIPAddress,
+				Tags:                 vm.Tags,
+				PrincipalID:          vm.Identity.PrincipalID,
+				TenantID:             vm.Identity.TenantID,
+				IdentityType:         vm.Identity.Type,
+				VMID:                 vmID,
+				SubscriptionID:       subscriptionID,
+				Offer:                offer,
+				Publisher:            publisher,
+				SKU:                  sku,
+				Version:              version,
+				PlatformFaultDomain:  pfd,
+				PlatformUpdateDomain: pud,
+				Zone:                 vm.Zone,
+			}
+			break
+		}
+	}
+
+	// If no VM with identity, return error
+	if currentVM == nil {
+		return Result{
+			Output:  `{"error": {"code": "IdentityNotFound", "message": "No managed identity has been assigned to this resource"}}`,
+			Success: false,
+		}
+	}
+
+	// Handle token request: /metadata/identity/oauth2/token
+	if strings.Contains(imdsURL, "/metadata/identity/oauth2/token") {
+		resource := queryParams.Get("resource")
+		if resource == "" {
+			return Result{
+				Output:  `{"error": "Bad request. Required parameter 'resource' is missing"}`,
+				Success: false,
+			}
+		}
+
+		// Generate a realistic mock JWT token
+		token := p.generateMockAccessToken(currentVM.PrincipalID, currentVM.TenantID, resource)
+
+		// Store the token in game state for later validation
+		p.gameState.StoreToken(token, resource, currentVM.PrincipalID)
+
+		now := time.Now().Unix()
+		expiresOn := now + 86399 // ~24 hours (real tokens are typically 24h)
+
+		// Real IMDS token response format
+		response := map[string]interface{}{
+			"access_token":   token,
+			"refresh_token":  "",                             // Always empty for managed identity
+			"expires_in":     "86399",                        // String, not int
+			"expires_on":     fmt.Sprintf("%d", expiresOn),   // Unix timestamp as string
+			"ext_expires_in": "86399",                        // Extended expiry
+			"not_before":     fmt.Sprintf("%d", now),         // Unix timestamp as string
+			"resource":       resource,
+			"token_type":     "Bearer",
+		}
+
+		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
+		return Result{
+			Output:  string(jsonBytes),
 			Success: true,
 		}
 	}
 
-	if strings.Contains(url, "/metadata/instance") {
+	// Handle instance metadata: /metadata/instance
+	if strings.Contains(imdsURL, "/metadata/instance") {
+		// Build tags string (key:value;key2:value2 format)
+		var tagPairs []string
+		for k, v := range currentVM.Tags {
+			tagPairs = append(tagPairs, fmt.Sprintf("%s:%s", k, v))
+		}
+		tagsStr := strings.Join(tagPairs, ";")
+
+		// Build resourceId (full ARM path)
+		resourceID := fmt.Sprintf("/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Compute/virtualMachines/%s",
+			currentVM.SubscriptionID, currentVM.ResourceGroup, currentVM.Name)
+
+		// Build osProfile
+		adminUsername := currentVM.AdminUsername
+		if adminUsername == "" {
+			adminUsername = "azureuser"
+		}
+		osProfile := map[string]interface{}{
+			"adminUsername":                 adminUsername,
+			"computerName":                  currentVM.Name,
+			"disablePasswordAuthentication": "true",
+		}
+
+		// Build securityProfile (realistic defaults)
+		securityProfile := map[string]interface{}{
+			"secureBootEnabled": "false",
+			"virtualTpmEnabled": "false",
+			"encryptionAtHost":  "false",
+			"securityType":      "",
+		}
+
+		// Build network section
+		network := map[string]interface{}{
+			"interface": []map[string]interface{}{
+				{
+					"ipv4": map[string]interface{}{
+						"ipAddress": []map[string]interface{}{
+							{
+								"privateIpAddress": currentVM.PrivateIP,
+								"publicIpAddress":  currentVM.PublicIP,
+							},
+						},
+						"subnet": []map[string]interface{}{
+							{
+								"address": "10.0.1.0",
+								"prefix":  "24",
+							},
+						},
+					},
+					"ipv6": map[string]interface{}{
+						"ipAddress": []map[string]interface{}{},
+					},
+					"macAddress": "000D3A123456",
+				},
+			},
+		}
+
+		// Build compute section with all realistic fields
+		compute := map[string]interface{}{
+			"azEnvironment":        "AzurePublicCloud",
+			"customData":           "",
+			"evictionPolicy":       "",
+			"isHostCompatibilityLayerVm": "false",
+			"licenseType":          "",
+			"location":             currentVM.Location,
+			"name":                 currentVM.Name,
+			"offer":                currentVM.Offer,
+			"osProfile":            osProfile,
+			"osType":               currentVM.OSType,
+			"placementGroupId":     "",
+			"plan":                 map[string]interface{}{"name": "", "product": "", "publisher": ""},
+			"platformFaultDomain":  currentVM.PlatformFaultDomain,
+			"platformUpdateDomain": currentVM.PlatformUpdateDomain,
+			"priority":             "Regular",
+			"publicKeys":           []interface{}{},
+			"publisher":            currentVM.Publisher,
+			"resourceGroupName":    currentVM.ResourceGroup,
+			"resourceId":           resourceID,
+			"securityProfile":      securityProfile,
+			"sku":                  currentVM.SKU,
+			"storageProfile":       map[string]interface{}{"dataDisks": []interface{}{}, "imageReference": map[string]interface{}{"id": "", "offer": currentVM.Offer, "publisher": currentVM.Publisher, "sku": currentVM.SKU, "version": currentVM.Version}, "osDisk": map[string]interface{}{"caching": "ReadWrite", "createOption": "FromImage", "diffDiskSettings": map[string]interface{}{"option": ""}, "diskSizeGB": "30", "encryptionSettings": map[string]interface{}{"enabled": "false"}, "image": map[string]interface{}{"uri": ""}, "managedDisk": map[string]interface{}{"id": "", "storageAccountType": "Premium_LRS"}, "name": currentVM.Name + "_OsDisk", "osType": currentVM.OSType, "vhd": map[string]interface{}{"uri": ""}, "writeAcceleratorEnabled": "false"}},
+			"subscriptionId":       currentVM.SubscriptionID,
+			"tags":                 tagsStr,
+			"tagsList":             []map[string]string{},
+			"userData":             "",
+			"version":              currentVM.Version,
+			"vmId":                 currentVM.VMID,
+			"vmScaleSetName":       "",
+			"vmSize":               currentVM.VMSize,
+			"zone":                 currentVM.Zone,
+		}
+
+		// Add identity if present
+		if currentVM.IdentityType == "SystemAssigned" {
+			compute["identity"] = map[string]interface{}{
+				"type":        "SystemAssigned",
+				"principalId": currentVM.PrincipalID,
+				"tenantId":    currentVM.TenantID,
+			}
+		} else if currentVM.IdentityType == "UserAssigned" {
+			compute["identity"] = map[string]interface{}{
+				"type": "UserAssigned",
+			}
+		}
+
+		response := map[string]interface{}{
+			"compute": compute,
+			"network": network,
+		}
+
+		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
 		return Result{
-			Output: `{
-  "compute": {
-    "name": "victim-vm",
-    "resourceGroupName": "production-rg",
-    "subscriptionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "vmId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-    "location": "eastus",
-    "tags": "environment:production;owner:admin"
-  }
-}`,
+			Output:  string(jsonBytes),
+			Success: true,
+		}
+	}
+
+	// Handle identity info: /metadata/identity/info
+	if strings.Contains(imdsURL, "/metadata/identity/info") {
+		response := map[string]interface{}{
+			"tenantId": currentVM.TenantID,
+		}
+		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
+		return Result{
+			Output:  string(jsonBytes),
+			Success: true,
+		}
+	}
+
+	// Handle scheduledevents (for realism)
+	if strings.Contains(imdsURL, "/metadata/scheduledevents") {
+		response := map[string]interface{}{
+			"DocumentIncarnation": 1,
+			"Events":              []interface{}{},
+		}
+		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
+		return Result{
+			Output:  string(jsonBytes),
+			Success: true,
+		}
+	}
+
+	// Handle attested data endpoint
+	if strings.Contains(imdsURL, "/metadata/attested") {
+		response := map[string]interface{}{
+			"encoding":  "pkcs7",
+			"signature": "MIIEgAYJKoZIhvcNAQcCoIIEcTCCBG0CAQExDTALBglghkgBZQME...",
+		}
+		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
+		return Result{
+			Output:  string(jsonBytes),
+			Success: true,
+		}
+	}
+
+	// Default: list available categories (no api-version required)
+	if strings.HasSuffix(imdsURL, "/metadata") || strings.HasSuffix(imdsURL, "/metadata/") {
+		return Result{
+			Output:  `["instance", "identity", "scheduledevents", "attested"]`,
 			Success: true,
 		}
 	}
 
 	return Result{
-		Output:  `{"error": "Not found"}`,
+		Output:  `{"error": {"code": "NotFound", "message": "The requested path does not exist"}}`,
 		Success: false,
 	}
+}
+
+// generateMockAccessToken creates a realistic-looking JWT token
+func (p *Parser) generateMockAccessToken(principalID, tenantID, resource string) string {
+	// Create a mock JWT header
+	header := map[string]string{
+		"typ": "JWT",
+		"alg": "RS256",
+		"kid": "mock-key-id-12345",
+	}
+
+	// Create a mock JWT payload
+	now := time.Now().Unix()
+	payload := map[string]interface{}{
+		"aud":       resource,
+		"iss":       fmt.Sprintf("https://sts.windows.net/%s/", tenantID),
+		"iat":       now,
+		"nbf":       now,
+		"exp":       now + 28800,
+		"aio":       "mock-aio-value",
+		"appid":     principalID,
+		"appidacr":  "2",
+		"idp":       fmt.Sprintf("https://sts.windows.net/%s/", tenantID),
+		"oid":       principalID,
+		"sub":       principalID,
+		"tid":       tenantID,
+		"uti":       "mock-uti-value",
+		"ver":       "1.0",
+		"xms_mirid": fmt.Sprintf("/subscriptions/aaaabbbb-cccc-dddd-eeee-ffffgggghhhh/resourceGroups/production-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/%s", principalID),
+	}
+
+	headerJSON, _ := json.Marshal(header)
+	payloadJSON, _ := json.Marshal(payload)
+
+	// Base64 URL encode (simplified - real JWT uses base64url)
+	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	// Create mock signature (not cryptographically valid, but realistic looking)
+	mockSig := "mock_signature_that_looks_realistic_" + principalID[:8]
+	sigB64 := base64.RawURLEncoding.EncodeToString([]byte(mockSig))
+
+	return fmt.Sprintf("%s.%s.%s", headerB64, payloadB64, sigB64)
 }
 
 func extractHost(url string) string {
@@ -322,8 +689,39 @@ Time:%s</Message>
 		}
 	}
 
-	// Container exists but is private
-	if !container.IsPubliclyAccessible() {
+	// Container exists but is private - check for Bearer token authorization
+	hasValidToken := false
+	hasMsVersion := false
+
+	// Check for x-ms-version header (required for authenticated Azure Storage requests)
+	if _, ok := headers["x-ms-version"]; ok {
+		hasMsVersion = true
+	}
+
+	if authHeader, ok := headers["Authorization"]; ok {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			// x-ms-version is required when using Bearer token auth
+			if !hasMsVersion {
+				return Result{
+					Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
+<Error>
+  <Code>MissingRequiredHeader</Code>
+  <Message>An HTTP header that's mandatory for this request is not specified.
+HeaderName: x-ms-version
+RequestId:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Time:%s</Message>
+</Error>`, time.Now().Format(time.RFC3339)),
+					Success: false,
+				}
+			}
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			if p.gameState.ValidateToken(token, "storage") {
+				hasValidToken = true
+			}
+		}
+	}
+
+	if !container.IsPubliclyAccessible() && !hasValidToken {
 		return Result{
 			Output: fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <Error>

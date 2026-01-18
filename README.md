@@ -75,12 +75,12 @@ AzureStrike intercepts and mocks the following command patterns:
 | ID | Name | Difficulty | Description |
 |----|------|------------|-------------|
 | 01 | Storage Misconfiguration Discovery | Beginner | Identify publicly accessible storage containers exposing sensitive data |
+| 02 | IMDS Token Theft | Beginner | Exploit Azure IMDS from a compromised VM to steal managed identity tokens |
 
 ### Planned Scenarios
 
 | ID | Name | Difficulty | Description |
 |----|------|------------|-------------|
-| 02 | IMDS Token Theft | Beginner | Exploit Azure IMDS from a compromised VM to steal managed identity tokens |
 | 03 | Service Principal Exposure | Beginner | Discover and abuse exposed service principal credentials |
 | 04 | NSG Misconfiguration | Intermediate | Identify overly permissive network security group rules |
 | 05 | Privilege Escalation via RBAC | Intermediate | Discover and exploit excessive RBAC permissions |
