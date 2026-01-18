@@ -98,25 +98,26 @@ resources:
 objectives:
   - id: discover_account
     description: "Discover Contoso's storage account endpoint"
+    # Keep command-based trigger for scan command (no event emitted for scan results)
     trigger: "regex:(scan storage.*(contoso|--company)|curl.*contosostorage2024\\.blob\\.core\\.windows\\.net)"
     points: 50
     order: 1
 
   - id: list_containers
     description: "Enumerate containers in the storage account"
-    trigger: "regex:curl.*contosostorage2024\\.blob\\.core\\.windows\\.net.*comp=list"
+    trigger: "state:container_listed:contosostorage2024"
     points: 75
     order: 2
 
   - id: find_public_container
     description: "Identify the publicly accessible backup container"
-    trigger: "regex:curl.*contosostorage2024\\.blob\\.core\\.windows\\.net/backups"
+    trigger: "state:blob_listed:backups"
     points: 100
     order: 3
 
   - id: extract_secrets
     description: "Download and examine sensitive backup files"
-    trigger: "regex:(curl.*backups/(secrets|config)|cat.*(secrets|config))"
+    trigger: "state:blob_read:secrets.txt"
     points: 150
     order: 4
     hidden: false

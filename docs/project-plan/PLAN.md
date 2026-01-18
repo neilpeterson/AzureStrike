@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 4 complete. IMDS Token Theft functionality implemented.
+Phase 4.5 complete. Event-based objective system implemented.
 
 ## Phases
 
@@ -69,6 +69,18 @@ Phase 4 complete. IMDS Token Theft functionality implemented.
 - [x] Instance metadata retrieval
 - [x] Managed identity token extraction
 - [x] Token usage for Azure resource access
+
+### Phase 4.5: Event-Based Objectives (Complete)
+
+- [x] Add GameEvent type to game/state.go
+- [x] Implement EmitEvent() method for state changes
+- [x] Add state: trigger type to objective matching
+- [x] Update IMDS handlers to emit token_extracted event
+- [x] Update storage handlers to emit blob_read, blob_listed events
+- [x] Update curl handlers to emit metadata_retrieved event
+- [x] Update scenario YAML to use state-based triggers
+- [x] Add unit tests for event system
+- [x] Maintain backward compatibility with command-based triggers
 
 ### Phase 5: Service Principal Exposure
 

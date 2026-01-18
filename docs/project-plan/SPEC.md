@@ -47,11 +47,45 @@
 4. **Debrief** - Educational summary with remediation guidance
 
 #### Objective System
-- Objectives tracked by command execution
-- Trigger matching: substring, regex (`regex:` prefix), or exact match
+- Objectives tracked by command execution OR game state changes
+- Trigger matching supports three modes:
+  - **Command-based**: substring or regex (`regex:` prefix) matching against input
+  - **State-based**: `state:` prefix triggers on game events/state changes
 - Each objective completes only once
 - Hidden objectives revealed when completed
 - Help commands (`-h`, `--help`) do not trigger objectives
+
+#### Event System (State-Based Triggers)
+The event system decouples objective completion from exact command strings, allowing
+objectives to be completed based on what the player *achieved* rather than what they typed.
+
+**Event Types:**
+| Event | Description | Payload |
+|-------|-------------|---------|
+| `token_extracted` | Player obtained an access token | resource, principal_id |
+| `metadata_retrieved` | Player retrieved VM metadata | metadata_type |
+| `blob_read` | Player successfully read a blob | account, container, blob |
+| `blob_listed` | Player listed blobs in a container | account, container |
+| `storage_authenticated` | Player authenticated to storage | account, method |
+| `secret_discovered` | Player found sensitive data | secret_type, location |
+
+**State Trigger Syntax:**
+```yaml
+# Simple event match
+trigger: "state:token_extracted"
+
+# Event with specific value
+trigger: "state:blob_read:database-credentials.json"
+
+# Event with any value (wildcard)
+trigger: "state:blob_read:*"
+```
+
+**Benefits:**
+- Multiple valid commands can achieve the same objective
+- Validates that the action actually succeeded
+- Enforces realistic attack chains (can't use token before extracting it)
+- Allows creative solutions not anticipated by scenario author
 
 #### Scoring System
 - Points awarded for objective completion (defined in YAML)
@@ -271,7 +305,39 @@ type State struct {
     StorageEnv          *storage.Environment
     EntraEnv            *entra.Environment
     ComputeEnv          *compute.Environment
+    ExtractedTokens     map[string]*ExtractedToken
+    Events              []GameEvent  // Event log for state-based triggers
 }
+
+type GameEvent struct {
+    Type      string            // e.g., "token_extracted", "blob_read"
+    Target    string            // e.g., blob name, resource URL
+    Timestamp time.Time
+    Data      map[string]string // Additional event metadata
+}
+```
+
+### Event Flow
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Player types   │────▶│  Command handler │────▶│  Handler emits  │
+│    command      │     │   executes       │     │  GameEvent      │
+└─────────────────┘     └──────────────────┘     └────────┬────────┘
+                                                          │
+                                                          ▼
+                                                ┌─────────────────┐
+                                                │ State.EmitEvent │
+                                                │ checks triggers │
+                                                └────────┬────────┘
+                                                          │
+                                    ┌─────────────────────┴─────────────────────┐
+                                    ▼                                           ▼
+                          ┌─────────────────┐                         ┌─────────────────┐
+                          │ Command-based   │                         │ State-based     │
+                          │ trigger check   │                         │ trigger check   │
+                          │ (regex/substr)  │                         │ (event match)   │
+                          └─────────────────┘                         └─────────────────┘
 ```
 
 ## Implementation Details

@@ -79,40 +79,40 @@ func TestRecordCommandWithRegexTrigger(t *testing.T) {
 	assert.Contains(t, state.CompletedObjectives, "obj2")
 }
 
-func TestMatchesTriggerSubstring(t *testing.T) {
+func TestMatchesCommandTriggerSubstring(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)
 
 	t.Run("matches substring", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("az storage account list", "az storage"))
+		assert.True(t, state.matchesCommandTrigger("az storage account list", "az storage"))
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("AZ STORAGE account list", "az storage"))
+		assert.True(t, state.matchesCommandTrigger("AZ STORAGE account list", "az storage"))
 	})
 
 	t.Run("no match", func(t *testing.T) {
-		assert.False(t, state.matchesTrigger("az vm list", "az storage"))
+		assert.False(t, state.matchesCommandTrigger("az vm list", "az storage"))
 	})
 }
 
-func TestMatchesTriggerRegex(t *testing.T) {
+func TestMatchesCommandTriggerRegex(t *testing.T) {
 	sc := createTestScenario()
 	state := NewState(sc)
 
 	t.Run("matches regex", func(t *testing.T) {
-		assert.True(t, state.matchesTrigger("curl http://169.254.169.254/metadata/instance", "regex:curl.*metadata"))
+		assert.True(t, state.matchesCommandTrigger("curl http://169.254.169.254/metadata/instance", "regex:curl.*metadata"))
 	})
 
 	t.Run("regex no match", func(t *testing.T) {
-		assert.False(t, state.matchesTrigger("wget http://example.com", "regex:curl.*metadata"))
+		assert.False(t, state.matchesCommandTrigger("wget http://example.com", "regex:curl.*metadata"))
 	})
 
 	t.Run("complex regex", func(t *testing.T) {
 		trigger := "regex:az storage blob (list|download)"
-		assert.True(t, state.matchesTrigger("az storage blob list", trigger))
-		assert.True(t, state.matchesTrigger("az storage blob download", trigger))
-		assert.False(t, state.matchesTrigger("az storage blob upload", trigger))
+		assert.True(t, state.matchesCommandTrigger("az storage blob list", trigger))
+		assert.True(t, state.matchesCommandTrigger("az storage blob download", trigger))
+		assert.False(t, state.matchesCommandTrigger("az storage blob upload", trigger))
 	})
 }
 
@@ -372,4 +372,153 @@ func TestExtractedTokensInitialized(t *testing.T) {
 
 	assert.NotNil(t, state.ExtractedTokens)
 	assert.Empty(t, state.ExtractedTokens)
+}
+
+// Tests for event-based objective system
+
+func createStateEventScenario() *scenario.Scenario {
+	return &scenario.Scenario{
+		ID:         "event-test-scenario",
+		Name:       "Event Test Scenario",
+		Difficulty: "beginner",
+		Objectives: []scenario.Objective{
+			{ID: "cmd_obj", Description: "Command-based objective", Trigger: "az storage", Points: 100},
+			{ID: "event_obj", Description: "Event-based objective", Trigger: "state:token_extracted", Points: 150},
+			{ID: "event_target", Description: "Event with target", Trigger: "state:blob_read:secrets.txt", Points: 200},
+			{ID: "event_wildcard", Description: "Event with wildcard", Trigger: "state:blob_listed:*", Points: 75},
+		},
+	}
+}
+
+func TestEventsInitialized(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	assert.NotNil(t, state.Events)
+	assert.Empty(t, state.Events)
+}
+
+func TestEmitEvent(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	completed := state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", map[string]string{
+		"principal_id": "test-principal",
+	})
+
+	assert.Len(t, state.Events, 1)
+	assert.Equal(t, EventTokenExtracted, state.Events[0].Type)
+	assert.Equal(t, "https://storage.azure.com/", state.Events[0].Target)
+	assert.Equal(t, "test-principal", state.Events[0].Data["principal_id"])
+	assert.Empty(t, completed) // No state-based objectives in test scenario
+}
+
+func TestEmitEventTriggersStateObjective(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	completed := state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+
+	assert.Contains(t, completed, "event_obj")
+	assert.Contains(t, state.CompletedObjectives, "event_obj")
+	assert.Equal(t, 150, state.Score.Points)
+}
+
+func TestEmitEventWithTargetMatch(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Should not match - wrong target
+	completed := state.EmitEvent(EventBlobRead, "other-file.txt", nil)
+	assert.Empty(t, completed)
+
+	// Should match - correct target
+	completed = state.EmitEvent(EventBlobRead, "secrets.txt", nil)
+	assert.Contains(t, completed, "event_target")
+	assert.Equal(t, 200, state.Score.Points)
+}
+
+func TestEmitEventWithWildcardMatch(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Any blob_listed event should match the wildcard trigger
+	completed := state.EmitEvent(EventBlobListed, "any-container", nil)
+
+	assert.Contains(t, completed, "event_wildcard")
+	assert.Equal(t, 75, state.Score.Points)
+}
+
+func TestMatchesStateTrigger(t *testing.T) {
+	sc := createTestScenario()
+	state := NewState(sc)
+
+	t.Run("simple event type match", func(t *testing.T) {
+		event := GameEvent{Type: EventTokenExtracted, Target: "https://storage.azure.com/"}
+		assert.True(t, state.matchesStateTrigger(event, "state:token_extracted"))
+	})
+
+	t.Run("event type with target match", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "secrets.txt"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+
+	t.Run("event type with wrong target", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "other.txt"}
+		assert.False(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+
+	t.Run("event type with wildcard target", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "any-file.txt"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:*"))
+	})
+
+	t.Run("wrong event type", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobListed, Target: "container"}
+		assert.False(t, state.matchesStateTrigger(event, "state:token_extracted"))
+	})
+
+	t.Run("case insensitive target match", func(t *testing.T) {
+		event := GameEvent{Type: EventBlobRead, Target: "SECRETS.TXT"}
+		assert.True(t, state.matchesStateTrigger(event, "state:blob_read:secrets.txt"))
+	})
+}
+
+func TestCommandObjectivesSkipStateTriggersAndViceVersa(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// Command should only trigger command-based objectives
+	completed := state.RecordCommand("az storage account list", "output", true)
+	assert.Contains(t, completed, "cmd_obj")
+	assert.NotContains(t, completed, "event_obj")
+
+	// Event should only trigger state-based objectives
+	completed = state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+	assert.Contains(t, completed, "event_obj")
+	assert.NotContains(t, completed, "cmd_obj") // Already completed anyway
+}
+
+func TestMultipleEventsAndObjectives(t *testing.T) {
+	sc := createStateEventScenario()
+	state := NewState(sc)
+
+	// First event
+	state.EmitEvent(EventTokenExtracted, "https://storage.azure.com/", nil)
+	assert.Len(t, state.CompletedObjectives, 1)
+
+	// Second event
+	state.EmitEvent(EventBlobListed, "container", nil)
+	assert.Len(t, state.CompletedObjectives, 2)
+
+	// Third event
+	state.EmitEvent(EventBlobRead, "secrets.txt", nil)
+	assert.Len(t, state.CompletedObjectives, 3)
+
+	// Command
+	state.RecordCommand("az storage account list", "output", true)
+	assert.Len(t, state.CompletedObjectives, 4)
+
+	// All objectives complete
+	assert.True(t, state.AllObjectivesComplete())
 }

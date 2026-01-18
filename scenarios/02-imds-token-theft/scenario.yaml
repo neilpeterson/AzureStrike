@@ -154,25 +154,25 @@ resources:
 objectives:
   - id: discover_imds
     description: "Discover and probe the IMDS endpoint"
-    trigger: "regex:curl.*169\\.254\\.169\\.254.*Metadata.*true"
+    trigger: "state:imds_probed"
     points: 50
     order: 1
 
   - id: get_instance_metadata
     description: "Retrieve VM instance metadata"
-    trigger: "regex:curl.*169\\.254\\.169\\.254.*/metadata/instance"
+    trigger: "state:metadata_retrieved:instance"
     points: 75
     order: 2
 
   - id: extract_token
     description: "Extract the managed identity access token"
-    trigger: "regex:curl.*169\\.254\\.169\\.254.*/metadata/identity/oauth2/token"
+    trigger: "state:token_extracted"
     points: 125
     order: 3
 
   - id: use_token_storage
     description: "Use the stolen token to access protected storage"
-    trigger: "regex:curl.*contosobackups2024\\.blob\\.core\\.windows\\.net.*Authorization.*Bearer"
+    trigger: "state:blob_read:database-credentials.json"
     points: 150
     order: 4
 

@@ -366,6 +366,12 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 		// Store the token in game state for later validation
 		p.gameState.StoreToken(token, resource, currentVM.PrincipalID)
 
+		// Emit token extraction event
+		p.gameState.EmitEvent(game.EventTokenExtracted, resource, map[string]string{
+			"principal_id": currentVM.PrincipalID,
+			"tenant_id":    currentVM.TenantID,
+		})
+
 		now := time.Now().Unix()
 		expiresOn := now + 86399 // ~24 hours (real tokens are typically 24h)
 
@@ -499,6 +505,13 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 			"network": network,
 		}
 
+		// Emit metadata retrieval event
+		p.gameState.EmitEvent(game.EventMetadataRetrieved, "instance", map[string]string{
+			"vm_name":       currentVM.Name,
+			"has_identity":  fmt.Sprintf("%v", currentVM.IdentityType != ""),
+			"identity_type": currentVM.IdentityType,
+		})
+
 		jsonBytes, _ := json.MarshalIndent(response, "", "  ")
 		return Result{
 			Output:  string(jsonBytes),
@@ -546,6 +559,9 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 
 	// Default: list available categories (no api-version required)
 	if strings.HasSuffix(imdsURL, "/metadata") || strings.HasSuffix(imdsURL, "/metadata/") {
+		// Emit IMDS probed event (player discovered/probed the IMDS endpoint)
+		p.gameState.EmitEvent(game.EventIMDSProbed, "metadata", nil)
+
 		return Result{
 			Output:  `["instance", "identity", "scheduledevents", "attested"]`,
 			Success: true,
@@ -717,6 +733,10 @@ Time:%s</Message>
 			token := strings.TrimPrefix(authHeader, "Bearer ")
 			if p.gameState.ValidateToken(token, "storage") {
 				hasValidToken = true
+				// Emit storage authenticated event
+				p.gameState.EmitEvent(game.EventStorageAuthenticated, accountName, map[string]string{
+					"method": "bearer_token",
+				})
 			}
 		}
 	}
@@ -755,6 +775,12 @@ Time:%s</Message>
 				Success: false,
 			}
 		}
+		// Emit blob read event
+		p.gameState.EmitEvent(game.EventBlobRead, blobName, map[string]string{
+			"account":   accountName,
+			"container": containerName,
+		})
+
 		// Return blob content
 		return Result{
 			Output:  blob.Content,
@@ -768,6 +794,11 @@ Time:%s</Message>
 
 // listContainersXML returns containers in Azure XML format
 func (p *Parser) listContainersXML(account *storage.Account) Result {
+	// Emit container listed event
+	p.gameState.EmitEvent(game.EventContainerListed, account.Name, map[string]string{
+		"container_count": fmt.Sprintf("%d", len(account.Containers)),
+	})
+
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="utf-8"?>
 <EnumerationResults ServiceEndpoint="https://` + account.Name + `.blob.core.windows.net/">
@@ -790,6 +821,12 @@ func (p *Parser) listContainersXML(account *storage.Account) Result {
 
 // listBlobsXML returns blobs in Azure XML format
 func (p *Parser) listBlobsXML(account *storage.Account, container *storage.Container) Result {
+	// Emit blob listed event
+	p.gameState.EmitEvent(game.EventBlobListed, container.Name, map[string]string{
+		"account":    account.Name,
+		"blob_count": fmt.Sprintf("%d", len(container.Blobs)),
+	})
+
 	var sb strings.Builder
 	sb.WriteString(`<?xml version="1.0" encoding="utf-8"?>
 <EnumerationResults ServiceEndpoint="https://` + account.Name + `.blob.core.windows.net/" ContainerName="` + container.Name + `">
