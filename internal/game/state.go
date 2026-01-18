@@ -61,6 +61,7 @@ const (
 	EventStorageAuthenticated = "storage_authenticated"
 	EventSecretDiscovered     = "secret_discovered"
 	EventIMDSProbed           = "imds_probed"
+	EventStorageDiscovered    = "storage_discovered"
 )
 
 // GameStatus represents the current status of the game

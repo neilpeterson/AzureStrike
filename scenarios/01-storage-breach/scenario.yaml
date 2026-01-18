@@ -98,8 +98,7 @@ resources:
 objectives:
   - id: discover_account
     description: "Discover Contoso's storage account endpoint"
-    # Keep command-based trigger for scan command (no event emitted for scan results)
-    trigger: "regex:(scan storage.*(contoso|--company)|curl.*contosostorage2024\\.blob\\.core\\.windows\\.net)"
+    trigger: "state:storage_discovered:contosostorage2024"
     points: 50
     order: 1
 

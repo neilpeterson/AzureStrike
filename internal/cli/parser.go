@@ -949,6 +949,12 @@ Then check for public containers:
 			foundCount++
 			sb.WriteString(fmt.Sprintf("[+] FOUND: %s.blob.core.windows.net\n", name))
 			sb.WriteString(fmt.Sprintf("    └─ Location: %s | Kind: %s\n", account.Location, account.Kind))
+
+			// Emit storage discovered event
+			p.gameState.EmitEvent(game.EventStorageDiscovered, name, map[string]string{
+				"location": account.Location,
+				"kind":     account.Kind,
+			})
 		} else {
 			sb.WriteString(fmt.Sprintf("[-] Not found: %s\n", name))
 		}
