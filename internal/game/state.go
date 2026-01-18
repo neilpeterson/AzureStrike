@@ -23,6 +23,15 @@ type State struct {
 	ComputeEnv          *compute.Environment
 	Score               *Score
 	Status              GameStatus
+	ExtractedTokens     map[string]*ExtractedToken // token -> metadata
+}
+
+// ExtractedToken represents a token extracted via IMDS or other means
+type ExtractedToken struct {
+	Token       string
+	Resource    string // The resource the token is scoped to (e.g., https://storage.azure.com/)
+	PrincipalID string
+	ExtractedAt time.Time
 }
 
 // CommandRecord stores information about executed commands
@@ -55,6 +64,7 @@ func NewState(sc *scenario.Scenario) *State {
 		ComputeEnv:          compute.NewEnvironment(sc.Resources.VirtualMachines, sc.Resources.NetworkSecurityGroups),
 		Score:               NewScore(),
 		Status:              StatusPlaying,
+		ExtractedTokens:     make(map[string]*ExtractedToken),
 	}
 
 	// Initialize storage environment from scenario resources
@@ -63,6 +73,59 @@ func NewState(sc *scenario.Scenario) *State {
 	}
 
 	return state
+}
+
+// StoreToken records a token that was extracted via IMDS or other methods
+func (s *State) StoreToken(token, resource, principalID string) {
+	s.ExtractedTokens[token] = &ExtractedToken{
+		Token:       token,
+		Resource:    resource,
+		PrincipalID: principalID,
+		ExtractedAt: time.Now(),
+	}
+}
+
+// ValidateToken checks if a token is valid for accessing a given resource
+func (s *State) ValidateToken(token string, requiredResource string) bool {
+	extracted, exists := s.ExtractedTokens[token]
+	if !exists {
+		return false
+	}
+
+	// Check if the token is scoped for the required resource
+	// Storage tokens can be scoped to:
+	// - https://storage.azure.com/
+	// - https://management.azure.com/ (ARM can access storage)
+	// - https://<account>.blob.core.windows.net/ (specific account)
+	switch requiredResource {
+	case "storage":
+		return extracted.Resource == "https://storage.azure.com/" ||
+			extracted.Resource == "https://management.azure.com/" ||
+			strings.Contains(extracted.Resource, ".blob.core.windows.net")
+	case "management":
+		return extracted.Resource == "https://management.azure.com/"
+	default:
+		return extracted.Resource == requiredResource
+	}
+}
+
+// GetTokenPrincipal returns the principal ID for a given token
+func (s *State) GetTokenPrincipal(token string) string {
+	if extracted, exists := s.ExtractedTokens[token]; exists {
+		return extracted.PrincipalID
+	}
+	return ""
+}
+
+// GetLatestToken returns the most recently extracted token, if any
+func (s *State) GetLatestToken() *ExtractedToken {
+	var latest *ExtractedToken
+	for _, token := range s.ExtractedTokens {
+		if latest == nil || token.ExtractedAt.After(latest.ExtractedAt) {
+			latest = token
+		}
+	}
+	return latest
 }
 
 // RecordCommand adds a command to the history and checks for objective completion

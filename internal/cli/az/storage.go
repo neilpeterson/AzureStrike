@@ -4,17 +4,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/azurestrike/azurestrike/internal/azure/compute"
 	"github.com/azurestrike/azurestrike/internal/azure/entra"
 	"github.com/azurestrike/azurestrike/internal/azure/storage"
 )
 
+// TokenInfo contains information about an extracted token
+type TokenInfo struct {
+	Token       string
+	Resource    string
+	PrincipalID string
+}
+
+// TokenGetter is a function that returns the latest extracted token
+type TokenGetter func() *TokenInfo
+
 // Handler processes az CLI commands
 type Handler struct {
-	storageEnv *storage.Environment
-	entraEnv   *entra.Environment
-	computeEnv *compute.Environment
+	storageEnv  *storage.Environment
+	entraEnv    *entra.Environment
+	computeEnv  *compute.Environment
+	tokenGetter TokenGetter
 }
 
 // Result represents command execution result
@@ -25,11 +37,12 @@ type Result struct {
 }
 
 // NewHandler creates a new az CLI handler
-func NewHandler(storageEnv *storage.Environment, entraEnv *entra.Environment, computeEnv *compute.Environment) *Handler {
+func NewHandler(storageEnv *storage.Environment, entraEnv *entra.Environment, computeEnv *compute.Environment, tokenGetter TokenGetter) *Handler {
 	return &Handler{
-		storageEnv: storageEnv,
-		entraEnv:   entraEnv,
-		computeEnv: computeEnv,
+		storageEnv:  storageEnv,
+		entraEnv:    entraEnv,
+		computeEnv:  computeEnv,
+		tokenGetter: tokenGetter,
 	}
 }
 
@@ -719,7 +732,80 @@ func (h *Handler) handleAccount(args []string) Result {
 		output, _ := json.MarshalIndent(accounts, "", "  ")
 		return Result{Output: string(output), Success: true}
 	}
+	if args[0] == "get-access-token" {
+		return h.handleGetAccessToken(args[1:])
+	}
 	return Result{Output: "az account: unknown command", Success: false}
+}
+
+func (h *Handler) handleGetAccessToken(args []string) Result {
+	if hasHelpFlag(args) {
+		return Result{Output: h.getAccessTokenHelp(), Success: true}
+	}
+
+	// Check if we have a token getter and if there's a token available
+	if h.tokenGetter == nil {
+		return Result{
+			Output:  "ERROR: Please run 'az login' to setup account.",
+			Success: false,
+		}
+	}
+
+	token := h.tokenGetter()
+	if token == nil {
+		return Result{
+			Output:  "ERROR: Please run 'az login' to setup account.",
+			Success: false,
+		}
+	}
+
+	// Parse resource argument if provided
+	resource := getArgValue(args, "--resource", "")
+	if resource == "" {
+		resource = "https://management.azure.com/"
+	}
+
+	// Build response matching Azure CLI format
+	now := time.Now()
+	expiresOn := now.Add(time.Hour * 24)
+
+	response := map[string]interface{}{
+		"accessToken":  token.Token,
+		"expiresOn":    expiresOn.Format("2006-01-02 15:04:05.000000"),
+		"expires_on":   expiresOn.Unix(),
+		"subscription": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+		"tenant":       "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+		"tokenType":    "Bearer",
+		"resource":     resource,
+	}
+
+	output, _ := json.MarshalIndent(response, "", "  ")
+	return Result{Output: string(output), Success: true}
+}
+
+func (h *Handler) getAccessTokenHelp() string {
+	return `
+Command
+    az account get-access-token : Get a token for utilities to access Azure.
+
+Arguments
+    --resource             : Azure resource endpoints in AAD v1.0.
+    --resource-type        : Type of resource. Allowed values: aad-graph, arm, ms-graph.
+    --scope                : Space-separated scopes.
+    --tenant -t            : Tenant ID.
+
+Global Arguments
+    --help -h              : Show this help message and exit.
+    --output -o            : Output format.  Allowed values: json, jsonc, none, table, tsv, yaml.
+                             Default: json.
+    --query                : JMESPath query string. See http://jmespath.org/ for more information.
+
+Examples
+    Get access token for the current subscription:
+        az account get-access-token
+
+    Get access token for a specific resource:
+        az account get-access-token --resource https://storage.azure.com/`
 }
 
 func (h *Handler) accountHelp() string {
@@ -728,6 +814,7 @@ Group
     az account : Manage Azure subscription information.
 
 Commands:
+    get-access-token   : Get a token for utilities to access Azure.
     list               : Get a list of subscriptions for the logged in account.
     show               : Get the details of a subscription.
 
@@ -743,7 +830,10 @@ Examples
         az account show
 
     List all subscriptions:
-        az account list`
+        az account list
+
+    Get access token:
+        az account get-access-token`
 }
 
 // hasHelpFlag checks if args contain --help, -h, or -help as the first arg

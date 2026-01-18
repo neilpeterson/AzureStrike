@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"strconv"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/azurestrike/azurestrike/internal/cli"
 	"github.com/azurestrike/azurestrike/internal/game"
+	"github.com/azurestrike/azurestrike/internal/scenario"
 )
 
 // App is the main application model
@@ -20,6 +23,7 @@ type App struct {
 	height       int
 	showBriefing bool
 	showDebrief  bool
+	scenariosDir string
 }
 
 // KeyMap defines the key bindings
@@ -50,7 +54,7 @@ var keys = KeyMap{
 }
 
 // NewApp creates a new application instance
-func NewApp(state *game.State) *App {
+func NewApp(state *game.State, scenariosDir string) *App {
 	return &App{
 		gameState:    state,
 		parser:       cli.NewParser(state),
@@ -58,6 +62,7 @@ func NewApp(state *game.State) *App {
 		status:       NewStatus(state),
 		fireworks:    NewFireworks(),
 		showBriefing: true,
+		scenariosDir: scenariosDir,
 	}
 }
 
@@ -81,10 +86,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Handle briefing/debrief dismissal
-		if a.showBriefing || a.showDebrief {
+		if a.showBriefing {
 			if key.Matches(msg, keys.Dismiss) {
 				a.showBriefing = false
+				return a, nil
+			}
+			return a, nil
+		}
+
+		// Handle debrief dismissal - try to advance to next scenario
+		if a.showDebrief {
+			if key.Matches(msg, keys.Dismiss) {
 				a.showDebrief = false
+				// Try to load the next scenario
+				if a.loadNextScenario() {
+					// Successfully loaded next scenario, show its briefing
+					a.showBriefing = true
+				}
+				// If no next scenario, just return to game (completed all)
 				return a, nil
 			}
 			return a, nil
@@ -228,7 +247,7 @@ func (a *App) renderDebrief() string {
 		lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("255")).
-			Render(string(rune(a.gameState.Score.Points+'0'))) + " points\n\n"
+			Render(strconv.Itoa(a.gameState.Score.Points)) + " points\n\n"
 
 	content += titleStyle.Render("Debrief:") + "\n"
 	content += a.gameState.Scenario.Debrief + "\n"
@@ -246,4 +265,29 @@ func (a *App) renderDebrief() string {
 		lipgloss.Center,
 		style.Render(content),
 	)
+}
+
+// loadNextScenario attempts to load the next scenario and returns true if successful
+func (a *App) loadNextScenario() bool {
+	if a.scenariosDir == "" {
+		return false
+	}
+
+	nextScenario, err := scenario.GetNextScenario(a.scenariosDir, a.gameState.Scenario.ID)
+	if err != nil || nextScenario == nil {
+		return false
+	}
+
+	// Create new game state for the next scenario
+	a.gameState = game.NewState(nextScenario)
+
+	// Reinitialize the parser and status panel with the new game state
+	a.parser = cli.NewParser(a.gameState)
+	a.status = NewStatus(a.gameState)
+	a.status.SetSize(32, a.height-4)
+
+	// Clear the terminal for the new scenario
+	a.terminal.Clear()
+
+	return true
 }

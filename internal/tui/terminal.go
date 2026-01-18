@@ -144,14 +144,20 @@ func (t *Terminal) Update(msg tea.Msg) (*Terminal, tea.Cmd) {
 		}
 	}
 
-	// Update text input
+	// Update text input for key messages
 	var cmd tea.Cmd
 	t.input, cmd = t.input.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// Update viewport
-	t.viewport, cmd = t.viewport.Update(msg)
-	cmds = append(cmds, cmd)
+	// Only pass non-key messages to viewport (e.g., window size changes)
+	// Key messages should NOT go to viewport - they cause unintended scrolling
+	switch msg.(type) {
+	case tea.KeyMsg:
+		// Don't pass key messages to viewport - input field handles them
+	default:
+		t.viewport, cmd = t.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	return t, tea.Batch(cmds...)
 }

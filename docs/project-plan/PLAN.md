@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 3 complete. Testing framework and CI/CD pipelines are implemented.
+Phase 4 complete. IMDS Token Theft functionality implemented.
 
 ## Phases
 
@@ -63,12 +63,12 @@ Phase 3 complete. Testing framework and CI/CD pipelines are implemented.
 - [x] Cross-platform binary builds (GOOS/GOARCH)
 - [x] GitHub Releases with artifacts
 
-### Phase 4: IMDS Token Theft
+### Phase 4: IMDS Token Theft (Complete)
 
-- [ ] curl support for IMDS endpoint (169.254.169.254)
-- [ ] Instance metadata retrieval
-- [ ] Managed identity token extraction
-- [ ] Token usage for Azure resource access
+- [x] curl support for IMDS endpoint (169.254.169.254)
+- [x] Instance metadata retrieval
+- [x] Managed identity token extraction
+- [x] Token usage for Azure resource access
 
 ### Phase 5: Service Principal Exposure
 
