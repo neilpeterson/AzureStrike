@@ -108,12 +108,16 @@ objectives:
     trigger: "state:container_listed:contosostorage2024"
     points: 75
     order: 2
+    requires:
+      - discover_account
 
   - id: find_public_container
     description: "Identify the publicly accessible backup container"
     trigger: "state:blob_listed:backups"
     points: 100
     order: 3
+    requires:
+      - list_containers
 
   - id: extract_secrets
     description: "Download and examine sensitive backup files"
@@ -121,6 +125,8 @@ objectives:
     points: 150
     order: 4
     hidden: false
+    requires:
+      - find_public_container
 
 hints:
   - objective_id: discover_account

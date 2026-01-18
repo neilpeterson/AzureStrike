@@ -522,3 +522,107 @@ func TestMultipleEventsAndObjectives(t *testing.T) {
 	// All objectives complete
 	assert.True(t, state.AllObjectivesComplete())
 }
+
+// Tests for prerequisite system
+
+func createPrerequisiteScenario() *scenario.Scenario {
+	return &scenario.Scenario{
+		ID:         "prereq-test",
+		Name:       "Prerequisite Test",
+		Difficulty: "beginner",
+		Objectives: []scenario.Objective{
+			{ID: "step1", Description: "First step", Trigger: "state:step1", Points: 50},
+			{ID: "step2", Description: "Second step", Trigger: "state:step2", Points: 75, Requires: []string{"step1"}},
+			{ID: "step3", Description: "Third step", Trigger: "state:step3", Points: 100, Requires: []string{"step2"}},
+			{ID: "cmd_step", Description: "Command step", Trigger: "az test", Points: 50, Requires: []string{"step1"}},
+		},
+	}
+}
+
+func TestPrerequisitesMet(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	t.Run("no prerequisites returns true", func(t *testing.T) {
+		obj := sc.GetObjective("step1")
+		assert.True(t, state.prerequisitesMet(*obj))
+	})
+
+	t.Run("unmet prerequisite returns false", func(t *testing.T) {
+		obj := sc.GetObjective("step2")
+		assert.False(t, state.prerequisitesMet(*obj))
+	})
+
+	t.Run("met prerequisite returns true", func(t *testing.T) {
+		state.CompleteObjective("step1")
+		obj := sc.GetObjective("step2")
+		assert.True(t, state.prerequisitesMet(*obj))
+	})
+}
+
+func TestPrerequisiteBlocksCompletion(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try to complete step2 without completing step1 first
+	completed := state.EmitEvent("step2", "", nil)
+
+	assert.Empty(t, completed)
+	assert.NotContains(t, state.CompletedObjectives, "step2")
+}
+
+func TestPrerequisiteAllowsCompletionInOrder(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Complete step1 first
+	completed := state.EmitEvent("step1", "", nil)
+	assert.Contains(t, completed, "step1")
+
+	// Now step2 should be completable
+	completed = state.EmitEvent("step2", "", nil)
+	assert.Contains(t, completed, "step2")
+
+	// Now step3 should be completable
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Contains(t, completed, "step3")
+}
+
+func TestPrerequisiteChainEnforcement(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try to skip to step3 (requires step2, which requires step1)
+	completed := state.EmitEvent("step3", "", nil)
+	assert.Empty(t, completed)
+
+	// Complete step1
+	state.EmitEvent("step1", "", nil)
+
+	// Step3 still shouldn't work (step2 not done)
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Empty(t, completed)
+
+	// Complete step2
+	state.EmitEvent("step2", "", nil)
+
+	// Now step3 works
+	completed = state.EmitEvent("step3", "", nil)
+	assert.Contains(t, completed, "step3")
+}
+
+func TestPrerequisiteWorksForCommandTriggers(t *testing.T) {
+	sc := createPrerequisiteScenario()
+	state := NewState(sc)
+
+	// Try command trigger before prerequisite is met
+	completed := state.RecordCommand("az test command", "output", true)
+	assert.NotContains(t, completed, "cmd_step")
+
+	// Complete step1 (the prerequisite)
+	state.EmitEvent("step1", "", nil)
+
+	// Now command trigger should work
+	completed = state.RecordCommand("az test command", "output", true)
+	assert.Contains(t, completed, "cmd_step")
+}

@@ -163,18 +163,24 @@ objectives:
     trigger: "state:metadata_retrieved:instance"
     points: 75
     order: 2
+    requires:
+      - discover_imds
 
   - id: extract_token
     description: "Extract the managed identity access token"
     trigger: "state:token_extracted"
     points: 125
     order: 3
+    requires:
+      - get_instance_metadata
 
   - id: use_token_storage
     description: "Use the stolen token to access protected storage"
     trigger: "state:blob_read:database-credentials.json"
     points: 150
     order: 4
+    requires:
+      - extract_token
 
 hints:
   - objective_id: discover_imds

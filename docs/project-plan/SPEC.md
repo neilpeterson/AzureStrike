@@ -87,6 +87,39 @@ trigger: "state:blob_read:*"
 - Enforces realistic attack chains (can't use token before extracting it)
 - Allows creative solutions not anticipated by scenario author
 
+#### Prerequisite System
+Objectives can require other objectives to be completed first, enforcing logical
+sequencing of the attack chain. This prevents players from skipping steps.
+
+**Prerequisite Syntax:**
+```yaml
+objectives:
+  - id: discover_endpoint
+    description: "Find the IMDS endpoint"
+    trigger: "state:imds_probed"
+    points: 50
+
+  - id: get_metadata
+    description: "Retrieve VM metadata"
+    trigger: "state:metadata_retrieved"
+    points: 75
+    requires:
+      - discover_endpoint  # Must complete discover_endpoint first
+
+  - id: extract_token
+    description: "Extract the access token"
+    trigger: "state:token_extracted"
+    points: 100
+    requires:
+      - get_metadata  # Chained prerequisite
+```
+
+**Behavior:**
+- Objectives with unmet prerequisites are skipped during trigger evaluation
+- Prerequisites can be chained (A → B → C)
+- Both command-based and state-based triggers respect prerequisites
+- Validation ensures referenced prerequisites exist
+
 #### Scoring System
 - Points awarded for objective completion (defined in YAML)
 - Hint penalties subtract from objective points

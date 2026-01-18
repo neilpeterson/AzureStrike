@@ -192,6 +192,11 @@ func (s *State) checkCommandObjectives(cmd string) []string {
 			continue
 		}
 
+		// Skip if prerequisites not met
+		if !s.prerequisitesMet(obj) {
+			continue
+		}
+
 		if s.matchesCommandTrigger(cmd, obj.Trigger) {
 			s.CompleteObjective(obj.ID)
 			completed = append(completed, obj.ID)
@@ -216,6 +221,11 @@ func (s *State) checkStateObjectives(event GameEvent) []string {
 			continue
 		}
 
+		// Skip if prerequisites not met
+		if !s.prerequisitesMet(obj) {
+			continue
+		}
+
 		if s.matchesStateTrigger(event, obj.Trigger) {
 			s.CompleteObjective(obj.ID)
 			completed = append(completed, obj.ID)
@@ -223,6 +233,16 @@ func (s *State) checkStateObjectives(event GameEvent) []string {
 	}
 
 	return completed
+}
+
+// prerequisitesMet checks if all required objectives are completed
+func (s *State) prerequisitesMet(obj scenario.Objective) bool {
+	for _, reqID := range obj.Requires {
+		if _, done := s.CompletedObjectives[reqID]; !done {
+			return false
+		}
+	}
+	return true
 }
 
 // matchesCommandTrigger checks if a command matches a command-based trigger pattern
