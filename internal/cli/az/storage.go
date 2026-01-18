@@ -770,12 +770,13 @@ func (h *Handler) handleGetAccessToken(args []string) Result {
 	expiresOn := now.Add(time.Hour * 24)
 
 	response := map[string]interface{}{
-		"accessToken": token.Token,
-		"expiresOn":   expiresOn.Format("2006-01-02 15:04:05.000000"),
-		"expires_on":  expiresOn.Unix(),
+		"accessToken":  token.Token,
+		"expiresOn":    expiresOn.Format("2006-01-02 15:04:05.000000"),
+		"expires_on":   expiresOn.Unix(),
 		"subscription": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-		"tenant":      "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
-		"tokenType":   "Bearer",
+		"tenant":       "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+		"tokenType":    "Bearer",
+		"resource":     resource,
 	}
 
 	output, _ := json.MarshalIndent(response, "", "  ")

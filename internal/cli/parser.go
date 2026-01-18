@@ -219,7 +219,7 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 	// Real IMDS requires api-version for most endpoints (except /metadata root)
 	if apiVersion == "" && !strings.HasSuffix(imdsURL, "/metadata") && !strings.HasSuffix(imdsURL, "/metadata/") {
 		return Result{
-			Output: `{"error": "Bad request. api-version was not specified in the request. For more information refer to aka.ms/azureimds", "newest-versions": ["2024-03-15", "2023-11-15", "2023-07-01"]}`,
+			Output:  `{"error": "Bad request. api-version was not specified in the request. For more information refer to aka.ms/azureimds", "newest-versions": ["2024-03-15", "2023-11-15", "2023-07-01"]}`,
 			Success: false,
 		}
 	}
@@ -372,11 +372,11 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 		// Real IMDS token response format
 		response := map[string]interface{}{
 			"access_token":   token,
-			"refresh_token":  "",                             // Always empty for managed identity
-			"expires_in":     "86399",                        // String, not int
-			"expires_on":     fmt.Sprintf("%d", expiresOn),   // Unix timestamp as string
-			"ext_expires_in": "86399",                        // Extended expiry
-			"not_before":     fmt.Sprintf("%d", now),         // Unix timestamp as string
+			"refresh_token":  "",                           // Always empty for managed identity
+			"expires_in":     "86399",                      // String, not int
+			"expires_on":     fmt.Sprintf("%d", expiresOn), // Unix timestamp as string
+			"ext_expires_in": "86399",                      // Extended expiry
+			"not_before":     fmt.Sprintf("%d", now),       // Unix timestamp as string
 			"resource":       resource,
 			"token_type":     "Bearer",
 		}
@@ -448,37 +448,37 @@ func (p *Parser) handleIMDS(imdsURL string, headers map[string]string) Result {
 
 		// Build compute section with all realistic fields
 		compute := map[string]interface{}{
-			"azEnvironment":        "AzurePublicCloud",
-			"customData":           "",
-			"evictionPolicy":       "",
+			"azEnvironment":              "AzurePublicCloud",
+			"customData":                 "",
+			"evictionPolicy":             "",
 			"isHostCompatibilityLayerVm": "false",
-			"licenseType":          "",
-			"location":             currentVM.Location,
-			"name":                 currentVM.Name,
-			"offer":                currentVM.Offer,
-			"osProfile":            osProfile,
-			"osType":               currentVM.OSType,
-			"placementGroupId":     "",
-			"plan":                 map[string]interface{}{"name": "", "product": "", "publisher": ""},
-			"platformFaultDomain":  currentVM.PlatformFaultDomain,
-			"platformUpdateDomain": currentVM.PlatformUpdateDomain,
-			"priority":             "Regular",
-			"publicKeys":           []interface{}{},
-			"publisher":            currentVM.Publisher,
-			"resourceGroupName":    currentVM.ResourceGroup,
-			"resourceId":           resourceID,
-			"securityProfile":      securityProfile,
-			"sku":                  currentVM.SKU,
-			"storageProfile":       map[string]interface{}{"dataDisks": []interface{}{}, "imageReference": map[string]interface{}{"id": "", "offer": currentVM.Offer, "publisher": currentVM.Publisher, "sku": currentVM.SKU, "version": currentVM.Version}, "osDisk": map[string]interface{}{"caching": "ReadWrite", "createOption": "FromImage", "diffDiskSettings": map[string]interface{}{"option": ""}, "diskSizeGB": "30", "encryptionSettings": map[string]interface{}{"enabled": "false"}, "image": map[string]interface{}{"uri": ""}, "managedDisk": map[string]interface{}{"id": "", "storageAccountType": "Premium_LRS"}, "name": currentVM.Name + "_OsDisk", "osType": currentVM.OSType, "vhd": map[string]interface{}{"uri": ""}, "writeAcceleratorEnabled": "false"}},
-			"subscriptionId":       currentVM.SubscriptionID,
-			"tags":                 tagsStr,
-			"tagsList":             []map[string]string{},
-			"userData":             "",
-			"version":              currentVM.Version,
-			"vmId":                 currentVM.VMID,
-			"vmScaleSetName":       "",
-			"vmSize":               currentVM.VMSize,
-			"zone":                 currentVM.Zone,
+			"licenseType":                "",
+			"location":                   currentVM.Location,
+			"name":                       currentVM.Name,
+			"offer":                      currentVM.Offer,
+			"osProfile":                  osProfile,
+			"osType":                     currentVM.OSType,
+			"placementGroupId":           "",
+			"plan":                       map[string]interface{}{"name": "", "product": "", "publisher": ""},
+			"platformFaultDomain":        currentVM.PlatformFaultDomain,
+			"platformUpdateDomain":       currentVM.PlatformUpdateDomain,
+			"priority":                   "Regular",
+			"publicKeys":                 []interface{}{},
+			"publisher":                  currentVM.Publisher,
+			"resourceGroupName":          currentVM.ResourceGroup,
+			"resourceId":                 resourceID,
+			"securityProfile":            securityProfile,
+			"sku":                        currentVM.SKU,
+			"storageProfile":             map[string]interface{}{"dataDisks": []interface{}{}, "imageReference": map[string]interface{}{"id": "", "offer": currentVM.Offer, "publisher": currentVM.Publisher, "sku": currentVM.SKU, "version": currentVM.Version}, "osDisk": map[string]interface{}{"caching": "ReadWrite", "createOption": "FromImage", "diffDiskSettings": map[string]interface{}{"option": ""}, "diskSizeGB": "30", "encryptionSettings": map[string]interface{}{"enabled": "false"}, "image": map[string]interface{}{"uri": ""}, "managedDisk": map[string]interface{}{"id": "", "storageAccountType": "Premium_LRS"}, "name": currentVM.Name + "_OsDisk", "osType": currentVM.OSType, "vhd": map[string]interface{}{"uri": ""}, "writeAcceleratorEnabled": "false"}},
+			"subscriptionId":             currentVM.SubscriptionID,
+			"tags":                       tagsStr,
+			"tagsList":                   []map[string]string{},
+			"userData":                   "",
+			"version":                    currentVM.Version,
+			"vmId":                       currentVM.VMID,
+			"vmScaleSetName":             "",
+			"vmSize":                     currentVM.VMSize,
+			"zone":                       currentVM.Zone,
 		}
 
 		// Add identity if present
